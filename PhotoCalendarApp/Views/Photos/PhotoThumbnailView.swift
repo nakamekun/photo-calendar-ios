@@ -9,13 +9,14 @@ struct PhotoThumbnailView: View {
     let sideLength: CGFloat
     private let cornerRadius: CGFloat = 22
     private let badgePadding: CGFloat = 10
+    private var pixelSideLength: CGFloat { sideLength * UIScreen.main.scale }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             AssetImageView(
                 asset: asset,
                 contentMode: .aspectFill,
-                targetSize: CGSize(width: sideLength * 2, height: sideLength * 2),
+                targetSize: CGSize(width: pixelSideLength, height: pixelSideLength),
                 cornerRadius: cornerRadius
             )
             .frame(width: sideLength, height: sideLength)
@@ -50,7 +51,7 @@ struct PhotoThumbnailView: View {
                     .padding(.vertical, 6)
                     .background(.ultraThinMaterial, in: Capsule())
                     .padding(12)
-                }
+            }
         }
         .frame(width: sideLength, height: sideLength)
     }
@@ -65,6 +66,7 @@ struct AssetImageView: View {
     let showsProgress: Bool
 
     @State private var image: UIImage?
+    @State private var lastLoadedKey = ""
     private let photoLibraryService = PhotoLibraryService()
 
     init(
@@ -92,19 +94,31 @@ struct AssetImageView: View {
                 Image(uiImage: image)
                     .resizable()
                     .scaledToFill()
-                    .frame(width: targetSize.width / 2, height: targetSize.height / 2)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
             } else if showsProgress {
-                ProgressView()
-                    .tint(.blue)
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(Color(.tertiarySystemFill))
+                    .overlay {
+                        ProgressView()
+                            .tint(.blue)
+                    }
             }
         }
-        .task(id: asset.localIdentifier) {
+        .task(id: loadKey) {
             loadImage()
         }
     }
 
+    private var loadKey: String {
+        "\(asset.localIdentifier)-\(Int(targetSize.width))x\(Int(targetSize.height))-\(contentMode.rawValue)-\(deliveryMode.rawValue)"
+    }
+
     private func loadImage() {
+        guard lastLoadedKey != loadKey else { return }
+        lastLoadedKey = loadKey
+        image = nil
+
         photoLibraryService.requestImage(
             for: asset,
             targetSize: targetSize,

@@ -35,6 +35,7 @@ struct CalendarPreviewItem: Identifiable, Hashable {
 struct MemoryTimelineEntry: Identifiable, Hashable {
     let date: Date
     let source: CalendarThumbnailSource
+    let isManualSelection: Bool
 
     var id: String {
         DayKeyFormatter.dayString(from: date)

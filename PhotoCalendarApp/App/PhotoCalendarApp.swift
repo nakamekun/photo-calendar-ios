@@ -21,6 +21,9 @@ struct PhotoCalendarApp: App {
     private static let hidesPreviewDebugBadge =
         launchArguments.contains("--hide-preview-debug-badge") ||
         launchEnvironment["HIDE_PREVIEW_DEBUG_BADGE"] == "1"
+    private static let forceRepresentativeCacheRebuild =
+        launchArguments.contains("--rebuild-representative-cache") ||
+        launchEnvironment["REBUILD_REPRESENTATIVE_CACHE"] == "1"
     private static let screenshotVariant = launchArguments
         .first(where: { $0.hasPrefix("--screenshot-variant=") })
         .flatMap { $0.split(separator: "=").last }
@@ -29,12 +32,17 @@ struct PhotoCalendarApp: App {
     @StateObject private var photoLibraryViewModel = PhotoLibraryViewModel(
         isPreviewMode: Self.isPreviewModeEnabled,
         isMockDataEnabled: Self.isMockCalendarUIEnabled,
-        showsPreviewDebugBadge: Self.hidesPreviewDebugBadge == false
+        showsPreviewDebugBadge: Self.hidesPreviewDebugBadge == false,
+        forceRepresentativeCacheRebuild: Self.forceRepresentativeCacheRebuild
     )
 
     init() {
         if Self.isPreviewModeEnabled {
             print("APP_STORE_PREVIEW_MODE=1 detected at launch. Preview mode enabled.")
+        }
+
+        if Self.forceRepresentativeCacheRebuild {
+            print("REBUILD_REPRESENTATIVE_CACHE=1 detected at launch. Representative selections will be rebuilt.")
         }
     }
 

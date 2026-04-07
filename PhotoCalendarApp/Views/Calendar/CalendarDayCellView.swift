@@ -156,7 +156,10 @@ struct CalendarDayCellView: View {
 
                 CalendarThumbnailContentView(
                     source: thumbnailSource,
-                    targetSize: CGSize(width: 180, height: 180),
+                    targetSize: CGSize(
+                        width: side * UIScreen.main.scale,
+                        height: side * UIScreen.main.scale
+                    ),
                     cornerRadius: thumbnailCornerRadius,
                     showsProgress: false
                 )
@@ -211,8 +214,8 @@ struct CalendarDayCellView: View {
     }
 
     private var foregroundColor: Color {
-        if day.hasRepresentativePhoto {
-            return .white
+        if day.hasAnyPhotos {
+            return .blue
         }
 
         return day.isWithinDisplayedMonth ? .primary : .secondary
@@ -239,8 +242,8 @@ struct CalendarDayCellView: View {
     }
 
     private var dayBadgeBackground: Color {
-        if day.hasRepresentativePhoto {
-            return Color.white.opacity(0.22)
+        if day.hasAnyPhotos {
+            return Color.blue.opacity(day.isToday ? 0.18 : 0.1)
         }
 
         if day.isToday {

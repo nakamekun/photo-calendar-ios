@@ -7,7 +7,6 @@ struct CalendarView: View {
         case habit
         case pick
         case memories
-        case streak
 
         var headline: String {
             switch self {
@@ -19,8 +18,6 @@ struct CalendarView: View {
                 return "Pick one photo for today"
             case .memories:
                 return "Revisit your life, one day at a time"
-            case .streak:
-                return "Keep your streak going"
             }
         }
 
@@ -28,7 +25,7 @@ struct CalendarView: View {
             switch self {
             case .memories:
                 return .memories
-            case .hero, .habit, .pick, .streak:
+            case .hero, .habit, .pick:
                 return .calendar
             }
         }
@@ -40,11 +37,9 @@ struct CalendarView: View {
             case .habit:
                 return .calendar
             case .pick:
-                return .preview
+                return .calendar
             case .memories:
                 return nil
-            case .streak:
-                return .streak
             }
         }
     }
@@ -52,9 +47,6 @@ struct CalendarView: View {
     private enum SectionID: Hashable {
         case intro
         case calendar
-        case today
-        case streak
-        case preview
     }
 
     private enum DisplayMode: String, CaseIterable, Identifiable {
@@ -98,16 +90,11 @@ struct CalendarView: View {
             .task {
                 photoLibraryViewModel.handleInitialLoad()
                 if photoLibraryViewModel.isPreviewMode {
-                    shouldShowSecondarySections = true
                     return
                 }
                 guard shouldShowSecondarySections == false else { return }
                 try? await Task.sleep(nanoseconds: 350_000_000)
                 shouldShowSecondarySections = true
-            }
-            .sensoryFeedback(trigger: photoLibraryViewModel.currentStreak) { oldValue, newValue in
-                guard newValue > oldValue else { return nil }
-                return .impact(flexibility: .soft, intensity: 0.9)
             }
             .overlay(alignment: .topLeading) {
                 if let screenshotVariant {
@@ -122,14 +109,19 @@ struct CalendarView: View {
         VStack(spacing: 0) {
             modePicker
 
-            TabView(selection: $displayMode) {
-                calendarPage
-                    .tag(DisplayMode.calendar)
-
-                MemoriesTimelineView(photoLibraryViewModel: photoLibraryViewModel)
-                    .tag(DisplayMode.memories)
+            ZStack {
+                switch displayMode {
+                case .calendar:
+                    calendarPage
+                        .transition(.opacity)
+                case .memories:
+                    MemoriesTimelineView(
+                        photoLibraryViewModel: photoLibraryViewModel,
+                        showCalendar: { displayMode = .calendar }
+                    )
+                        .transition(.opacity)
+                }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
         }
         .overlay {
             if photoLibraryViewModel.isLoading && photoLibraryViewModel.isPreviewMode == false {
@@ -148,15 +140,8 @@ struct CalendarView: View {
                         .id(SectionID.intro)
                     calendarSection
                         .id(SectionID.calendar)
-                    todayActionSection
-                        .id(SectionID.today)
-                    streakSummarySection
-                        .id(SectionID.streak)
 
                     if shouldShowSecondarySections {
-                        previewSection
-                            .id(SectionID.preview)
-
                         OnThisDaySectionView(
                             items: photoLibraryViewModel.onThisDayPreviewItems,
                             photoLibraryViewModel: photoLibraryViewModel
@@ -230,78 +215,11 @@ struct CalendarView: View {
         }
     }
 
-    private var todayActionSection: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Today's Photo")
-                .font(.headline)
-                .foregroundStyle(.white)
-
-            NavigationLink {
-                DayPhotosView(date: .now, photoLibraryViewModel: photoLibraryViewModel)
-            } label: {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(photoLibraryViewModel.hasRepresentativePhoto(on: .now) ? "Update Today's Photo" : "Choose Today's Photo")
-                            .font(.headline)
-
-                        Text(todayButtonSubtitle)
-                            .font(.footnote)
-                            .foregroundStyle(Color.white.opacity(0.58))
-                    }
-
-                    Spacer()
-
-                    Image(systemName: "chevron.right")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Color.white.opacity(0.5))
-                }
-                .padding(18)
-                .background(
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Color.white.opacity(0.04))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-        )
-    }
-
-    @ViewBuilder
-    private var streakSummarySection: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(photoLibraryViewModel.streakTitle)
-                .font(.footnote.weight(.semibold))
-                .foregroundStyle(Color.white.opacity(0.72))
-                .contentTransition(.numericText())
-                .animation(.spring(response: 0.3, dampingFraction: 0.82), value: photoLibraryViewModel.currentStreak)
-
-            if photoLibraryViewModel.showsStreakPrompt {
-                Text(photoLibraryViewModel.streakPrompt)
-                    .font(.footnote)
-                    .foregroundStyle(Color.white.opacity(0.46))
-                    .transition(.opacity)
-            } else {
-                Text("A small ritual that quietly fills the month.")
-                    .font(.footnote)
-                    .foregroundStyle(Color.white.opacity(0.42))
-            }
-        }
-        .padding(.horizontal, 4)
-    }
-
     private var calendarSection: some View {
         VStack(alignment: .leading, spacing: 18) {
             CalendarHeaderView(viewModel: viewModel)
 
-            Text("Fill the month one chosen day at a time.")
+            Text("Days with photos stay blue. Open a date to revisit its memory.")
                 .font(.footnote)
                 .foregroundStyle(Color.white.opacity(0.58))
 
@@ -322,64 +240,7 @@ struct CalendarView: View {
         .task(id: viewModel.displayedMonth) {
             photoLibraryViewModel.prepareCalendarThumbnailCache(
                 for: viewModel.displayedMonth,
-                targetSize: CGSize(width: 180, height: 180)
-            )
-        }
-    }
-
-    @ViewBuilder
-    private var previewSection: some View {
-        let items = photoLibraryViewModel.previewItems
-
-        if items.isEmpty == false {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(photoLibraryViewModel.previewStripTitle())
-                            .font(.headline)
-
-                        Text(photoLibraryViewModel.previewStripSubtitle())
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-
-                    Spacer()
-
-                    Text("Quick Pick")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.blue)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color.blue.opacity(0.12), in: Capsule())
-                }
-
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 14) {
-                        ForEach(items) { item in
-                            NavigationLink {
-                                DayPhotosView(date: item.date, photoLibraryViewModel: photoLibraryViewModel)
-                            } label: {
-                                CalendarPreviewCard(item: item)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 2)
-                }
-            }
-            .padding(20)
-            .background(
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color(.secondarySystemBackground),
-                                Color.blue.opacity(0.04)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                targetSize: CGSize(width: 96, height: 96)
             )
         }
     }
@@ -390,25 +251,14 @@ struct CalendarView: View {
             : photoLibraryViewModel.todayAssets().count
 
         if todayCount == 0 {
-            return "No photos for today yet. When you take some, choose one to keep the day."
+            return "Photos are organized by day, with a representative memory chosen automatically."
         }
 
         if photoLibraryViewModel.hasRepresentativePhoto(on: .now) {
-            return "Today's Photo is already set. Your calendar is taking shape, one day at a time."
+            return "The calendar stays at the center while each day quietly keeps one representative photo."
         }
 
-        return "You have \(todayCount) photo\(todayCount == 1 ? "" : "s") today. Choose one worth keeping."
-    }
-
-    private var todayButtonSubtitle: String {
-        let todayCount = photoLibraryViewModel.isPreviewMode
-            ? photoLibraryViewModel.mockPhotoCount(on: .now)
-            : photoLibraryViewModel.todayAssets().count
-        if todayCount == 0 {
-            return "Ready when new photos appear"
-        }
-
-        return "Choose from \(todayCount) photo\(todayCount == 1 ? "" : "s")"
+        return "You have \(todayCount) photo\(todayCount == 1 ? "" : "s") today. Each day keeps a representative photo automatically."
     }
 
     private func openSettings() {
@@ -444,72 +294,111 @@ struct CalendarView: View {
 
 private struct MemoriesTimelineView: View {
     @ObservedObject var photoLibraryViewModel: PhotoLibraryViewModel
+    let showCalendar: () -> Void
     @State private var shouldRenderEntries = false
+    @State private var selectedDate = Date().startOfDay()
 
-    private let dateFormatter: DateFormatter = {
+    private let calendar = Calendar.current
+    private let monthSymbols = Calendar.current.shortMonthSymbols
+
+    private let monthDayFormatter: DateFormatter = {
         let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("MMM d, yyyy")
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "MMM d"
         return formatter
     }()
 
     var body: some View {
         let entries = shouldRenderEntries ? photoLibraryViewModel.memoryTimelinePreviewItems : []
 
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Memories")
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
-                        .foregroundStyle(.white)
-
-                    Text("A quiet timeline of the days you chose to keep.")
-                        .font(.subheadline)
-                        .foregroundStyle(Color.white.opacity(0.62))
-                }
+        VStack(spacing: 0) {
+            fixedDateHeader(entries: entries)
+                .padding(.horizontal, 20)
                 .padding(.top, 8)
+                .padding(.bottom, 12)
 
-                if entries.isEmpty {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("No memories yet")
-                            .font(.headline)
-                            .foregroundStyle(.white)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 24) {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Memories")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundStyle(.white)
 
-                        Text("Choose a daily photo in the calendar to begin your timeline.")
-                            .font(.subheadline)
-                            .foregroundStyle(Color.white.opacity(0.62))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .fill(Color.white.opacity(0.04))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 28, style: .continuous)
-                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                    )
-                } else {
-                    LazyVStack(alignment: .leading, spacing: 28) {
-                        ForEach(entries) { entry in
-                            NavigationLink {
-                                DayPhotosView(date: entry.date, photoLibraryViewModel: photoLibraryViewModel)
-                            } label: {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    MemoryTimelinePhoto(source: entry.source)
+                            Text("A simple timeline of representative photos by day.")
+                                .font(.subheadline)
+                                .foregroundStyle(Color.white.opacity(0.62))
+                        }
+                        .padding(.top, 8)
 
-                                    Text(dateFormatter.string(from: entry.date))
-                                        .font(.footnote.weight(.medium))
-                                        .foregroundStyle(Color.white.opacity(0.72))
-                                        .padding(.horizontal, 4)
+                        if entries.isEmpty {
+                            VStack(alignment: .leading, spacing: 10) {
+                                Text("No memories yet")
+                                    .font(.headline)
+                                    .foregroundStyle(.white)
+
+                                Text("Representative photos will appear here after the library is read.")
+                                    .font(.subheadline)
+                                    .foregroundStyle(Color.white.opacity(0.62))
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(24)
+                            .background(
+                                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                    .fill(Color.white.opacity(0.04))
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                            )
+                        } else {
+                            LazyVStack(alignment: .leading, spacing: 28) {
+                                ForEach(entries) { entry in
+                                    NavigationLink {
+                                        DayPhotosView(
+                                            date: entry.date,
+                                            photoLibraryViewModel: photoLibraryViewModel,
+                                            onReturnToCalendar: showCalendar
+                                        )
+                                    } label: {
+                                        VStack(alignment: .leading, spacing: 12) {
+                                            MemoryTimelinePhoto(
+                                                source: entry.source,
+                                                isSwipeToClearEnabled: photoLibraryViewModel.isMockDataEnabled == false,
+                                                onSwipeToClear: {
+                                                    photoLibraryViewModel.disableAutoPick(
+                                                        for: entry.date,
+                                                        excludingCurrentRepresentative: true
+                                                    )
+                                                }
+                                            )
+
+                                            Text(memoryDateText(for: entry.date))
+                                                .font(.footnote.weight(.medium))
+                                                .foregroundStyle(Color.white.opacity(0.72))
+                                                .padding(.horizontal, 4)
+                                        }
+                                    }
+                                    .buttonStyle(.plain)
+                                    .id(entry.id)
                                 }
                             }
-                            .buttonStyle(.plain)
                         }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 36)
+                }
+                .onChange(of: selectedDate) { _, newValue in
+                    guard let target = closestEntry(to: newValue, in: entries) else { return }
+                    if target.date.startOfDay() != newValue.startOfDay() {
+                        selectedDate = target.date.startOfDay()
+                        return
+                    }
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        proxy.scrollTo(target.id, anchor: .top)
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 36)
         }
         .background(
             LinearGradient(
@@ -524,7 +413,7 @@ private struct MemoriesTimelineView: View {
         .task(id: photoLibraryViewModel.lastUpdated) {
             guard shouldRenderEntries else { return }
             photoLibraryViewModel.prepareMemoryTimelineCache(
-                targetSize: CGSize(width: 900, height: 900)
+                targetSize: CGSize(width: 480, height: 600)
             )
         }
         .task {
@@ -536,110 +425,216 @@ private struct MemoriesTimelineView: View {
             try? await Task.sleep(nanoseconds: 250_000_000)
             shouldRenderEntries = true
         }
+        .onChange(of: shouldRenderEntries) { _, ready in
+            guard ready, let firstEntry = entries.first else { return }
+            selectedDate = firstEntry.date.startOfDay()
+        }
+    }
+
+    private func fixedDateHeader(entries: [MemoryTimelineEntry]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                componentMenu(
+                    title: "Year",
+                    value: plainYearText(for: selectedDate)
+                ) {
+                    ForEach(availableYears(from: entries), id: \.self) { year in
+                        Button("\(year)") {
+                            setSelectedDateComponent(year: year)
+                        }
+                    }
+                }
+
+                componentMenu(
+                    title: "Month",
+                    value: monthSymbols[calendar.component(.month, from: selectedDate) - 1]
+                ) {
+                    ForEach(1...12, id: \.self) { month in
+                        Button(monthSymbols[month - 1]) {
+                            setSelectedDateComponent(month: month)
+                        }
+                    }
+                }
+
+                componentMenu(
+                    title: "Day",
+                    value: "\(calendar.component(.day, from: selectedDate))"
+                ) {
+                    let year = calendar.component(.year, from: selectedDate)
+                    let month = calendar.component(.month, from: selectedDate)
+                    let daysInMonth = calendar.range(
+                        of: .day,
+                        in: .month,
+                        for: calendar.date(from: DateComponents(year: year, month: month, day: 1)) ?? selectedDate
+                    )?.count ?? 31
+
+                    ForEach(1...daysInMonth, id: \.self) { day in
+                        Button("\(day)") {
+                            setSelectedDateComponent(day: day)
+                        }
+                    }
+                }
+            }
+
+            Text(memoryDateText(for: selectedDate))
+                .font(.caption.weight(.medium))
+                .foregroundStyle(
+                    entries.contains(where: { $0.id == DayKeyFormatter.dayString(from: selectedDate.startOfDay()) })
+                    ? Color.white.opacity(0.78)
+                    : Color.white.opacity(0.5)
+                )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color.white.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+        )
+    }
+
+    private func setSelectedDateComponent(year: Int? = nil, month: Int? = nil, day: Int? = nil) {
+        var components = calendar.dateComponents([.year, .month, .day], from: selectedDate)
+
+        if let year {
+            components.year = year
+        }
+        if let month {
+            components.month = month
+        }
+
+        let resolvedYear = components.year ?? calendar.component(.year, from: selectedDate)
+        let resolvedMonth = components.month ?? calendar.component(.month, from: selectedDate)
+        let monthDate = calendar.date(from: DateComponents(year: resolvedYear, month: resolvedMonth, day: 1)) ?? selectedDate
+        let maxDay = calendar.range(of: .day, in: .month, for: monthDate)?.count ?? 31
+
+        if let day {
+            components.day = min(day, maxDay)
+        } else {
+            components.day = min(components.day ?? 1, maxDay)
+        }
+
+        if let updatedDate = calendar.date(from: components) {
+            selectedDate = updatedDate.startOfDay()
+        }
+    }
+
+    private func plainYearText(for date: Date) -> String {
+        String(calendar.component(.year, from: date))
+    }
+
+    private func memoryDateText(for date: Date) -> String {
+        "\(monthDayFormatter.string(from: date)), \(plainYearText(for: date))"
+    }
+
+    private func availableYears(from entries: [MemoryTimelineEntry]) -> [Int] {
+        let currentYear = calendar.component(.year, from: .now)
+        let oldestYear = entries
+            .map { calendar.component(.year, from: $0.date) }
+            .min() ?? (currentYear - 10)
+        let lowerBound = min(oldestYear, currentYear)
+        return Array(stride(from: currentYear, through: lowerBound, by: -1))
+    }
+
+    private func closestEntry(to date: Date, in entries: [MemoryTimelineEntry]) -> MemoryTimelineEntry? {
+        let target = date.startOfDay()
+        return entries.min { lhs, rhs in
+            abs(lhs.date.startOfDay().timeIntervalSince(target)) < abs(rhs.date.startOfDay().timeIntervalSince(target))
+        }
+    }
+
+    private func componentMenu<Content: View>(title: String, value: String, @ViewBuilder content: () -> Content) -> some View {
+        Menu {
+            content()
+        } label: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(Color.white.opacity(0.6))
+                HStack(spacing: 6) {
+                    Text(value)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(Color.white.opacity(0.72))
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.white.opacity(0.12))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 
 private struct MemoryTimelinePhoto: View {
     let source: CalendarThumbnailSource
+    let isSwipeToClearEnabled: Bool
+    let onSwipeToClear: () -> Void
+
+    @State private var swipeOffset: CGFloat = 0
 
     var body: some View {
-        CalendarThumbnailContentView(
+        GeometryReader { proxy in
+            photoContent(in: proxy.size)
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(4 / 5, contentMode: .fit)
+        .clipped()
+    }
+
+    @ViewBuilder
+    private func photoContent(in size: CGSize) -> some View {
+        let content = CalendarThumbnailContentView(
             source: source,
-            targetSize: CGSize(width: 900, height: 900),
+            targetSize: CGSize(width: 480, height: 600),
             cornerRadius: 30,
             showsProgress: true
         )
-        .aspectRatio(4 / 5, contentMode: .fit)
+        .frame(width: size.width, height: size.height)
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
         )
-        .shadow(color: Color.black.opacity(0.32), radius: 24, y: 16)
-    }
-}
+        .offset(x: swipeOffset)
+        .rotationEffect(.degrees(Double(swipeOffset / 35)))
+        .contentShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+        .animation(.spring(response: 0.24, dampingFraction: 0.82), value: swipeOffset)
+        .shadow(color: Color.black.opacity(0.22), radius: 12, y: 8)
 
-private struct CalendarPreviewCard: View {
-    let item: CalendarPreviewItem
-    @State private var isPressed = false
-
-    private static let dayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("MMM d")
-        return formatter
-    }()
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.setLocalizedDateFormatFromTemplate("Hm")
-        return formatter
-    }()
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            CalendarThumbnailContentView(
-                source: item.thumbnailSource,
-                targetSize: CGSize(width: 320, height: 260),
-                cornerRadius: 24,
-                showsProgress: false
-            )
-            .frame(width: 136, height: 128)
-            .overlay(alignment: .topLeading) {
-                Text(badgeText)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.white.opacity(0.96))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.22), in: Capsule())
-                    .padding(10)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(Self.dayFormatter.string(from: item.date))
-                    .font(.subheadline.weight(.semibold))
-
-                Text(timeText)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .frame(width: 136, alignment: .leading)
-        .padding(10)
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(Color(.systemBackground).opacity(0.5))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
-        )
-        .scaleEffect(isPressed ? 0.98 : 1)
-        .shadow(color: Color.black.opacity(0.16), radius: isPressed ? 8 : 14, y: isPressed ? 4 : 10)
-        .animation(.spring(response: 0.24, dampingFraction: 0.82), value: isPressed)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { _ in
-                    if isPressed == false {
-                        isPressed = true
-                    }
-                }
-                .onEnded { _ in
-                    isPressed = false
-                }
-        )
-    }
-
-    private var timeText: String {
-        switch item.thumbnailSource {
-        case .asset:
-            return Self.timeFormatter.string(from: item.date)
-        case .mock:
-            return "Mock"
+        if isSwipeToClearEnabled {
+            content.highPriorityGesture(representativeClearGesture, including: .gesture)
+        } else {
+            content
         }
     }
 
-    private var badgeText: String {
-        Calendar.current.isDateInToday(item.date) ? "Today" : "Memory"
+    private var representativeClearGesture: some Gesture {
+        DragGesture(minimumDistance: 16)
+            .onChanged { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                swipeOffset = value.translation.width
+            }
+            .onEnded { value in
+                let isHorizontal = abs(value.translation.width) > abs(value.translation.height)
+                defer { swipeOffset = 0 }
+                guard isHorizontal, abs(value.translation.width) > 80 else { return }
+                onSwipeToClear()
+            }
     }
 }

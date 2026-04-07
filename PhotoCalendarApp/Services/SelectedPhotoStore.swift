@@ -1,27 +1,54 @@
 import Foundation
 
+enum DaySelectionSource: String, Codable, Hashable {
+    case automatic
+    case manual
+}
+
+struct CachedDaySelection: Codable, Hashable {
+    let representativeIdentifier: String
+    let latestAssetIdentifier: String
+    let latestAssetCreationDate: Date?
+    let source: DaySelectionSource
+    let updatedAt: Date
+}
+
 protocol SelectedPhotoStoring {
     var selections: [String: String] { get }
     var currentStreak: Int { get }
     var lastSelectedDate: Date? { get }
     func representativeIdentifier(for date: Date) -> String?
-    func setRepresentativeIdentifier(_ identifier: String, for date: Date)
+    func cachedSelection(for date: Date) -> CachedDaySelection?
+    func cachedSelections() -> [String: CachedDaySelection]
+    func excludedIdentifiers(for date: Date) -> Set<String>
+    func cachedExcludedIdentifiers() -> [String: Set<String>]
+    func excludeIdentifier(_ identifier: String, for date: Date)
+    func isAutoPickDisabled(for date: Date) -> Bool
+    func cachedAutoPickDisabledDates() -> Set<String>
+    func setAutoPickDisabled(_ isDisabled: Bool, for date: Date)
+    func setCachedSelection(_ selection: CachedDaySelection, for date: Date)
     func removeRepresentativeIdentifier(for date: Date)
+    func resetAllRepresentativeSelections()
 }
 
 final class SelectedPhotoStore: SelectedPhotoStoring {
     private let userDefaults: UserDefaults
-    private let storageKey = "selected-photo-by-day"
+    private let storageKey = "selected-photo-by-day-v2"
+    private let excludedStorageKey = "excluded-photo-identifiers-by-day-v1_1"
+    private let autoPickDisabledStorageKey = "auto-pick-disabled-days-v1_1"
+    private let legacyStorageKey = "selected-photo-by-day"
     private let streakKey = "current-photo-streak"
     private let lastSelectedDateKey = "last-selected-photo-date"
     private let calendar = Calendar.current
+    private let encoder = JSONEncoder()
+    private let decoder = JSONDecoder()
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
     }
 
     var selections: [String: String] {
-        userDefaults.dictionary(forKey: storageKey) as? [String: String] ?? [:]
+        cachedSelections().mapValues(\.representativeIdentifier)
     }
 
     var currentStreak: Int {
@@ -33,21 +60,119 @@ final class SelectedPhotoStore: SelectedPhotoStoring {
     }
 
     func representativeIdentifier(for date: Date) -> String? {
-        selections[DayKeyFormatter.dayString(from: date)]
+        cachedSelection(for: date)?.representativeIdentifier
     }
 
-    func setRepresentativeIdentifier(_ identifier: String, for date: Date) {
+    func cachedSelection(for date: Date) -> CachedDaySelection? {
+        cachedSelections()[DayKeyFormatter.dayString(from: date)]
+    }
+
+    func cachedSelections() -> [String: CachedDaySelection] {
+        if let data = userDefaults.data(forKey: storageKey),
+           let decoded = try? decoder.decode([String: CachedDaySelection].self, from: data) {
+            return decoded
+        }
+
+        let legacy = userDefaults.dictionary(forKey: legacyStorageKey) as? [String: String] ?? [:]
+        guard legacy.isEmpty == false else { return [:] }
+
+        let migrated = legacy.reduce(into: [String: CachedDaySelection]()) { partialResult, entry in
+            partialResult[entry.key] = CachedDaySelection(
+                representativeIdentifier: entry.value,
+                latestAssetIdentifier: entry.value,
+                latestAssetCreationDate: nil,
+                source: .manual,
+                updatedAt: .now
+            )
+        }
+
+        persist(migrated)
+        userDefaults.removeObject(forKey: legacyStorageKey)
+        return migrated
+    }
+
+    func excludedIdentifiers(for date: Date) -> Set<String> {
+        cachedExcludedIdentifiers()[DayKeyFormatter.dayString(from: date)] ?? []
+    }
+
+    func cachedExcludedIdentifiers() -> [String: Set<String>] {
+        guard let data = userDefaults.data(forKey: excludedStorageKey),
+              let decoded = try? decoder.decode([String: [String]].self, from: data) else {
+            return [:]
+        }
+
+        return decoded.reduce(into: [String: Set<String>]()) { partialResult, entry in
+            partialResult[entry.key] = Set(entry.value)
+        }
+    }
+
+    func excludeIdentifier(_ identifier: String, for date: Date) {
+        let key = DayKeyFormatter.dayString(from: date)
+        var updated = cachedExcludedIdentifiers()
+        var identifiers = updated[key] ?? []
+        identifiers.insert(identifier)
+        updated[key] = identifiers
+        persistExcludedIdentifiers(updated)
+    }
+
+    func isAutoPickDisabled(for date: Date) -> Bool {
+        cachedAutoPickDisabledDates().contains(DayKeyFormatter.dayString(from: date))
+    }
+
+    func cachedAutoPickDisabledDates() -> Set<String> {
+        guard let stored = userDefaults.array(forKey: autoPickDisabledStorageKey) as? [String] else {
+            return []
+        }
+
+        return Set(stored)
+    }
+
+    func setAutoPickDisabled(_ isDisabled: Bool, for date: Date) {
+        let key = DayKeyFormatter.dayString(from: date)
+        var updated = cachedAutoPickDisabledDates()
+
+        if isDisabled {
+            updated.insert(key)
+        } else {
+            updated.remove(key)
+        }
+
+        userDefaults.set(Array(updated).sorted(), forKey: autoPickDisabledStorageKey)
+    }
+
+    func setCachedSelection(_ selection: CachedDaySelection, for date: Date) {
         updateStreak(for: date)
 
-        var updated = selections
-        updated[DayKeyFormatter.dayString(from: date)] = identifier
-        userDefaults.set(updated, forKey: storageKey)
+        var updated = cachedSelections()
+        updated[DayKeyFormatter.dayString(from: date)] = selection
+        persist(updated)
     }
 
     func removeRepresentativeIdentifier(for date: Date) {
-        var updated = selections
+        var updated = cachedSelections()
         updated.removeValue(forKey: DayKeyFormatter.dayString(from: date))
-        userDefaults.set(updated, forKey: storageKey)
+        persist(updated)
+    }
+
+    func resetAllRepresentativeSelections() {
+        userDefaults.removeObject(forKey: storageKey)
+        userDefaults.removeObject(forKey: legacyStorageKey)
+        userDefaults.removeObject(forKey: streakKey)
+        userDefaults.removeObject(forKey: lastSelectedDateKey)
+    }
+
+    private func persist(_ selections: [String: CachedDaySelection]) {
+        guard let data = try? encoder.encode(selections) else { return }
+        userDefaults.set(data, forKey: storageKey)
+    }
+
+    private func persistExcludedIdentifiers(_ exclusions: [String: Set<String>]) {
+        let serializable = exclusions.reduce(into: [String: [String]]()) { partialResult, entry in
+            partialResult[entry.key] = Array(entry.value).sorted()
+        }
+
+        guard let data = try? encoder.encode(serializable) else { return }
+        userDefaults.set(data, forKey: excludedStorageKey)
     }
 
     private func updateStreak(for date: Date) {

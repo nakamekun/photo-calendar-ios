@@ -9,12 +9,14 @@ struct PhotoDetailView: View {
 
     @State private var selectedAssetID: String
     @State private var representativeAssetID: String?
+
     private static let detailDateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "EEEE, MMM d, yyyy"
         return formatter
     }()
+
     private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -40,13 +42,16 @@ struct PhotoDetailView: View {
     }
 
     var body: some View {
+        let screenBounds = UIScreen.main.bounds
+        let scale = UIScreen.main.scale
         VStack(spacing: 0) {
             TabView(selection: $selectedAssetID) {
                 ForEach(assets) { item in
                     AssetImageView(
                         asset: item.asset,
                         contentMode: .aspectFit,
-                        targetSize: CGSize(width: 1800, height: 1800)
+                        targetSize: CGSize(width: screenBounds.width * scale, height: screenBounds.height * scale),
+                        deliveryMode: .opportunistic
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .padding(.horizontal, 20)

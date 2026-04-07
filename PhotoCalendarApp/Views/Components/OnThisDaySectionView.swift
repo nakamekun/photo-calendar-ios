@@ -20,7 +20,7 @@ struct OnThisDaySectionView: View {
             if items.isEmpty {
                 EmptyStateView(
                     title: "Nothing here yet",
-                    message: "Keep saving one photo each day and memories from this date will appear over time.",
+                    message: "Once days are cached automatically, memories from this date will appear here.",
                     systemImageName: "clock.arrow.trianglehead.counterclockwise.rotate.90"
                 )
             } else {
