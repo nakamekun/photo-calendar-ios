@@ -298,6 +298,7 @@ private struct MemoriesTimelineView: View {
     @State private var shouldRenderEntries = false
     @State private var selectedDate = Date().startOfDay()
     @State private var memoryTimelineCacheTask: Task<Void, Never>?
+    @State private var isScrubbingTimeline = false
 
     private let calendar = Calendar.current
 
@@ -311,77 +312,88 @@ private struct MemoriesTimelineView: View {
                 .padding(.bottom, 12)
 
             ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Memories")
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
-                                .foregroundStyle(.white)
+                GeometryReader { geometry in
+                    ZStack(alignment: .trailing) {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 24) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Text("Memories")
+                                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                                        .foregroundStyle(.white)
 
-                            Text("A simple timeline of representative photos by day.")
-                                .font(.subheadline)
-                                .foregroundStyle(Color.white.opacity(0.62))
-                        }
-                        .padding(.top, 8)
+                                    Text("A simple timeline of representative photos by day.")
+                                        .font(.subheadline)
+                                        .foregroundStyle(Color.white.opacity(0.62))
+                                }
+                                .padding(.top, 8)
 
-                        if entries.isEmpty {
-                            VStack(alignment: .leading, spacing: 10) {
-                                Text("No memories yet")
-                                    .font(.headline)
-                                    .foregroundStyle(.white)
+                                if entries.isEmpty {
+                                    VStack(alignment: .leading, spacing: 10) {
+                                        Text("No memories yet")
+                                            .font(.headline)
+                                            .foregroundStyle(.white)
 
-                                Text("Representative photos will appear here after the library is read.")
-                                    .font(.subheadline)
-                                    .foregroundStyle(Color.white.opacity(0.62))
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(24)
-                            .background(
-                                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                                    .fill(Color.white.opacity(0.04))
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                                    .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
-                            )
-                        } else {
-                            LazyVStack(alignment: .leading, spacing: 28) {
-                                ForEach(entries) { entry in
-                                    NavigationLink {
-                                        DayPhotosView(
-                                            date: entry.date,
-                                            photoLibraryViewModel: photoLibraryViewModel,
-                                            onReturnToCalendar: showCalendar
-                                        )
-                                    } label: {
-                                        VStack(alignment: .leading, spacing: 12) {
-                                            MemoryTimelinePhoto(
-                                                source: entry.source,
-                                                isSwipeToClearEnabled: photoLibraryViewModel.isMockDataEnabled == false,
-                                                onSwipeToClear: {
-                                                    photoLibraryViewModel.disableAutoPick(
-                                                        for: entry.date,
-                                                        excludingCurrentRepresentative: true
+                                        Text("Representative photos will appear here after the library is read.")
+                                            .font(.subheadline)
+                                            .foregroundStyle(Color.white.opacity(0.62))
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(24)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                            .fill(Color.white.opacity(0.04))
+                                    )
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                            .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                                    )
+                                } else {
+                                    LazyVStack(alignment: .leading, spacing: 28) {
+                                        ForEach(entries) { entry in
+                                            NavigationLink {
+                                                DayPhotosView(
+                                                    date: entry.date,
+                                                    photoLibraryViewModel: photoLibraryViewModel,
+                                                    onReturnToCalendar: showCalendar
+                                                )
+                                            } label: {
+                                                VStack(alignment: .leading, spacing: 12) {
+                                                    MemoryTimelinePhoto(
+                                                        source: entry.source,
+                                                        isSwipeToClearEnabled: photoLibraryViewModel.isMockDataEnabled == false,
+                                                        onSwipeToClear: {
+                                                            photoLibraryViewModel.disableAutoPick(
+                                                                for: entry.date,
+                                                                excludingCurrentRepresentative: true
+                                                            )
+                                                        }
                                                     )
-                                                }
-                                            )
 
-                                            Text(memoryDateText(for: entry.date))
-                                                .font(.footnote.weight(.medium))
-                                                .foregroundStyle(Color.white.opacity(0.72))
-                                                .padding(.horizontal, 4)
+                                                    Text(memoryDateText(for: entry.date))
+                                                        .font(.footnote.weight(.medium))
+                                                        .foregroundStyle(Color.white.opacity(0.72))
+                                                        .padding(.horizontal, 4)
+                                                }
+                                            }
+                                            .buttonStyle(.plain)
+                                            .id(entry.id)
                                         }
                                     }
-                                    .buttonStyle(.plain)
-                                    .id(entry.id)
                                 }
                             }
+                            .padding(.horizontal, 20)
+                            .padding(.bottom, 36)
+                        }
+                        .scrollIndicators(.hidden)
+
+                        if entries.isEmpty == false {
+                            timelineScrubber(entries: entries, proxy: proxy, height: geometry.size.height)
+                                .padding(.trailing, 8)
                         }
                     }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 36)
                 }
                 .onChange(of: selectedDate) { _, newValue in
+                    guard isScrubbingTimeline == false else { return }
                     guard let target = closestEntry(to: newValue, in: entries) else { return }
                     if target.date.startOfDay() != newValue.startOfDay() {
                         selectedDate = target.date.startOfDay()
@@ -556,6 +568,69 @@ private struct MemoriesTimelineView: View {
         return entries.min { lhs, rhs in
             abs(lhs.date.startOfDay().timeIntervalSince(target)) < abs(rhs.date.startOfDay().timeIntervalSince(target))
         }
+    }
+
+    private func timelineScrubber(entries: [MemoryTimelineEntry], proxy: ScrollViewProxy, height: CGFloat) -> some View {
+        let thumbOffset = scrubberThumbOffset(entries: entries, height: height)
+
+        return ZStack(alignment: .top) {
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(0.1))
+                .frame(width: 6)
+
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.white.opacity(0.52))
+                .frame(width: 10, height: 68)
+                .offset(y: thumbOffset)
+                .shadow(color: Color.black.opacity(0.18), radius: 6, y: 3)
+        }
+        .frame(width: 32, height: height)
+        .contentShape(Rectangle())
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    isScrubbingTimeline = true
+                    scrubTimeline(
+                        at: value.location.y,
+                        height: height,
+                        entries: entries,
+                        proxy: proxy
+                    )
+                }
+                .onEnded { _ in
+                    isScrubbingTimeline = false
+                }
+        )
+    }
+
+    private func scrubTimeline(at locationY: CGFloat, height: CGFloat, entries: [MemoryTimelineEntry], proxy: ScrollViewProxy) {
+        guard let target = entryForScrubPosition(locationY, height: height, entries: entries) else { return }
+        let day = target.date.startOfDay()
+        if selectedDate != day {
+            selectedDate = day
+        }
+        proxy.scrollTo(target.id, anchor: .top)
+    }
+
+    private func entryForScrubPosition(_ locationY: CGFloat, height: CGFloat, entries: [MemoryTimelineEntry]) -> MemoryTimelineEntry? {
+        guard entries.isEmpty == false, height > 0 else { return nil }
+        let clampedProgress = min(max(locationY / height, 0), 1)
+        let index = min(Int(round(clampedProgress * CGFloat(entries.count - 1))), entries.count - 1)
+        return entries[index]
+    }
+
+    private func scrubberThumbOffset(entries: [MemoryTimelineEntry], height: CGFloat) -> CGFloat {
+        guard
+            let current = closestEntry(to: selectedDate, in: entries),
+            let index = entries.firstIndex(where: { $0.id == current.id }),
+            entries.count > 1
+        else {
+            return 0
+        }
+
+        let availableHeight = max(height - 68, 0)
+        let progress = CGFloat(index) / CGFloat(entries.count - 1)
+        return availableHeight * progress
     }
 
     private func componentMenu<Content: View>(title: String, value: String, @ViewBuilder content: () -> Content) -> some View {

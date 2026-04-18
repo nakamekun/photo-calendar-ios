@@ -171,6 +171,42 @@ final class PhotoLibraryViewModel: ObservableObject {
         }
     }
 
+    func loadDayFullyIfNeeded(_ date: Date) {
+        guard authorizationState.canReadLibrary || isMockDataEnabled else { return }
+        guard isPreviewMode == false else { return }
+
+        let day = calendar.startOfDay(for: date)
+        let key = DayKeyFormatter.dayString(from: day)
+
+        if dayStates[key]?.hasLoadedAllAssets == true {
+            return
+        }
+
+        if dayLoadTasks[key] != nil {
+            Task {
+                try? await Task.sleep(nanoseconds: 200_000_000)
+                await MainActor.run {
+                    self.loadDayFullyIfNeeded(day)
+                }
+            }
+            return
+        }
+
+        if let summary = photoDaySummariesByKey[key] {
+            loadAssets(for: summary, prioritize: .utility, loadsAllAssets: true)
+            return
+        }
+
+        Task {
+            await self.loadMonthIfNeeded(
+                day.startOfMonth(using: calendar),
+                priority: .utility,
+                focusedDay: day,
+                loadFocusedDayFully: true
+            )
+        }
+    }
+
     func assets(for date: Date) -> [PhotoAssetItem] {
         let key = DayKeyFormatter.dayString(from: calendar.startOfDay(for: date))
         return dayStates[key]?.assets ?? []
@@ -591,7 +627,8 @@ final class PhotoLibraryViewModel: ObservableObject {
         if clearLoading {
             isLoading = false
         }
-        rebuildDerivedCaches()
+        invalidateCalendarCache(for: summaries.map(\.date))
+        refreshTimelineDerivedCaches(referenceDate: focusedDay ?? .now, refreshPreviewStrip: true)
         lastUpdated = Date()
 
         if let focusedDay {
@@ -644,7 +681,8 @@ final class PhotoLibraryViewModel: ObservableObject {
 
             await MainActor.run {
                 assets.forEach { assetLookup[$0.id] = $0 }
-                rebuildDerivedCaches()
+                self.invalidateCalendarCache(for: summaries.map(\.date))
+                self.refreshTimelineDerivedCaches(refreshPreviewStrip: true)
                 lastUpdated = Date()
             }
         }
@@ -867,7 +905,8 @@ final class PhotoLibraryViewModel: ObservableObject {
             dayStates[key]?.representativeAssetID = autoCandidate.id
         }
 
-        rebuildDerivedCaches()
+        invalidateCalendarCache(for: [day])
+        refreshTimelineDerivedCaches(referenceDate: day, refreshPreviewStrip: calendar.isDateInToday(day))
         lastUpdated = Date()
 
         guard
@@ -1022,6 +1061,21 @@ final class PhotoLibraryViewModel: ObservableObject {
     private func rebuildDerivedCaches(referenceDate: Date = .now) {
         calendarDaysCache.removeAll(keepingCapacity: true)
         previewItems = buildPreviewStripItems(referenceDate: referenceDate, limit: 10)
+        onThisDayPreviewItems = buildOnThisDayItems(referenceDate: referenceDate, limit: 3)
+        memoryTimelinePreviewItems = buildMemoryTimelineEntries()
+    }
+
+    private func invalidateCalendarCache(for dates: [Date]) {
+        for month in Set(dates.map({ $0.startOfMonth(using: calendar) })) {
+            let monthKey = DayKeyFormatter.dayString(from: month)
+            calendarDaysCache.removeValue(forKey: monthKey)
+        }
+    }
+
+    private func refreshTimelineDerivedCaches(referenceDate: Date = .now, refreshPreviewStrip: Bool = false) {
+        if refreshPreviewStrip || previewItems.isEmpty {
+            previewItems = buildPreviewStripItems(referenceDate: referenceDate, limit: 10)
+        }
         onThisDayPreviewItems = buildOnThisDayItems(referenceDate: referenceDate, limit: 3)
         memoryTimelinePreviewItems = buildMemoryTimelineEntries()
     }

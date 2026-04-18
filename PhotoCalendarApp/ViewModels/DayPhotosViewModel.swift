@@ -13,6 +13,7 @@ final class DayPhotosViewModel: ObservableObject {
     private let photoLibraryViewModel: PhotoLibraryViewModel
     private var cancellable: AnyCancellable?
     private var hasUserSwiped = false
+    private var fullDayLoadTask: Task<Void, Never>?
 
     private static let navigationMonthDayFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -35,6 +36,7 @@ final class DayPhotosViewModel: ObservableObject {
         bind()
         photoLibraryViewModel.loadDayIfNeeded(self.date)
         photoLibraryViewModel.prepareDayNavigationCache(around: self.date, targetSize: CGSize(width: 240, height: 240))
+        scheduleFullDayLoad()
         reload()
     }
 
@@ -179,8 +181,10 @@ final class DayPhotosViewModel: ObservableObject {
     func setDate(_ newDate: Date) {
         date = newDate.startOfDay()
         hasUserSwiped = false
+        fullDayLoadTask?.cancel()
         photoLibraryViewModel.loadDayIfNeeded(date)
         photoLibraryViewModel.prepareDayNavigationCache(around: date, targetSize: CGSize(width: 240, height: 240))
+        scheduleFullDayLoad()
         reload()
     }
 
@@ -188,5 +192,21 @@ final class DayPhotosViewModel: ObservableObject {
         cancellable = photoLibraryViewModel.$lastUpdated.sink { [weak self] _ in
             self?.reload()
         }
+    }
+
+    private func scheduleFullDayLoad() {
+        let targetDate = date
+        fullDayLoadTask?.cancel()
+        fullDayLoadTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
+            guard Task.isCancelled == false else { return }
+            await MainActor.run {
+                self?.photoLibraryViewModel.loadDayFullyIfNeeded(targetDate)
+            }
+        }
+    }
+
+    deinit {
+        fullDayLoadTask?.cancel()
     }
 }

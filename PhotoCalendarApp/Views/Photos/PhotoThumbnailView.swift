@@ -17,6 +17,7 @@ struct PhotoThumbnailView: View {
                 asset: asset,
                 contentMode: .aspectFill,
                 targetSize: CGSize(width: pixelSideLength, height: pixelSideLength),
+                deliveryMode: .fastFormat,
                 cornerRadius: cornerRadius
             )
             .frame(width: sideLength, height: sideLength)
@@ -62,11 +63,14 @@ struct AssetImageView: View {
     let contentMode: PHImageContentMode
     let targetSize: CGSize
     let deliveryMode: PHImageRequestOptionsDeliveryMode
+    let upgradedDeliveryMode: PHImageRequestOptionsDeliveryMode?
     let cornerRadius: CGFloat
     let showsProgress: Bool
 
     @State private var image: UIImage?
     @State private var lastLoadedKey = ""
+    @State private var currentRequestID: PHImageRequestID = PHInvalidImageRequestID
+    @State private var upgradeRequestID: PHImageRequestID = PHInvalidImageRequestID
     private let photoLibraryService = PhotoLibraryService()
 
     init(
@@ -74,6 +78,7 @@ struct AssetImageView: View {
         contentMode: PHImageContentMode,
         targetSize: CGSize,
         deliveryMode: PHImageRequestOptionsDeliveryMode = .highQualityFormat,
+        upgradedDeliveryMode: PHImageRequestOptionsDeliveryMode? = nil,
         cornerRadius: CGFloat = 22,
         showsProgress: Bool = true
     ) {
@@ -81,6 +86,7 @@ struct AssetImageView: View {
         self.contentMode = contentMode
         self.targetSize = targetSize
         self.deliveryMode = deliveryMode
+        self.upgradedDeliveryMode = upgradedDeliveryMode
         self.cornerRadius = cornerRadius
         self.showsProgress = showsProgress
     }
@@ -108,6 +114,9 @@ struct AssetImageView: View {
         .task(id: loadKey) {
             loadImage()
         }
+        .onDisappear {
+            cancelImageRequest()
+        }
     }
 
     private var loadKey: String {
@@ -118,14 +127,42 @@ struct AssetImageView: View {
         guard lastLoadedKey != loadKey else { return }
         lastLoadedKey = loadKey
         image = nil
+        cancelImageRequest()
+        let requestedKey = loadKey
 
-        photoLibraryService.requestImage(
+        currentRequestID = photoLibraryService.requestImage(
             for: asset,
             targetSize: targetSize,
             contentMode: contentMode,
             deliveryMode: deliveryMode
         ) { image in
             Task { @MainActor in
+                guard self.lastLoadedKey == requestedKey else { return }
+                self.image = image
+                self.requestUpgradeIfNeeded(for: requestedKey)
+            }
+        }
+    }
+
+    private func cancelImageRequest() {
+        photoLibraryService.cancelImageRequest(currentRequestID)
+        photoLibraryService.cancelImageRequest(upgradeRequestID)
+        currentRequestID = PHInvalidImageRequestID
+        upgradeRequestID = PHInvalidImageRequestID
+    }
+
+    private func requestUpgradeIfNeeded(for requestedKey: String) {
+        guard let upgradedDeliveryMode, upgradedDeliveryMode != deliveryMode else { return }
+        guard upgradeRequestID == PHInvalidImageRequestID else { return }
+
+        upgradeRequestID = photoLibraryService.requestImage(
+            for: asset,
+            targetSize: targetSize,
+            contentMode: contentMode,
+            deliveryMode: upgradedDeliveryMode
+        ) { image in
+            Task { @MainActor in
+                guard self.lastLoadedKey == requestedKey else { return }
                 self.image = image
             }
         }

@@ -20,13 +20,15 @@ protocol PhotoLibraryServicing {
     func fetchPhotoDaySummaries(in interval: DateInterval, limitPerDay: Int) -> [PhotoDaySummary]
     func fetchAsset(localIdentifier: String) -> PHAsset?
     func fetchAssets(localIdentifiers: [String]) -> [PHAsset]
+    @discardableResult
     func requestImage(
         for asset: PHAsset,
         targetSize: CGSize,
         contentMode: PHImageContentMode,
         deliveryMode: PHImageRequestOptionsDeliveryMode,
         completion: @escaping (UIImage?) -> Void
-    )
+    ) -> PHImageRequestID
+    func cancelImageRequest(_ requestID: PHImageRequestID)
     func startCachingImages(
         for assets: [PHAsset],
         targetSize: CGSize,
@@ -211,13 +213,14 @@ final class PhotoLibraryService: PhotoLibraryServicing {
         return localIdentifiers.compactMap { lookup[$0] }
     }
 
+    @discardableResult
     func requestImage(
         for asset: PHAsset,
         targetSize: CGSize,
         contentMode: PHImageContentMode = .aspectFill,
         deliveryMode: PHImageRequestOptionsDeliveryMode = .opportunistic,
         completion: @escaping (UIImage?) -> Void
-    ) {
+    ) -> PHImageRequestID {
         let resolvedSize = normalizedTargetSize(targetSize)
         let cacheKey = imageCacheKey(
             assetID: asset.localIdentifier,
@@ -228,7 +231,7 @@ final class PhotoLibraryService: PhotoLibraryServicing {
 
         if let cached = PhotoLibraryService.imageCache.object(forKey: cacheKey as NSString) {
             completion(cached)
-            return
+            return PHInvalidImageRequestID
         }
 
         let shouldStartRequest: Bool
@@ -242,7 +245,7 @@ final class PhotoLibraryService: PhotoLibraryServicing {
         }
         PhotoLibraryService.cacheLock.unlock()
 
-        guard shouldStartRequest else { return }
+        guard shouldStartRequest else { return PHInvalidImageRequestID }
 
         let options = PHImageRequestOptions()
         options.isNetworkAccessAllowed = true
@@ -250,7 +253,7 @@ final class PhotoLibraryService: PhotoLibraryServicing {
         options.resizeMode = .fast
         options.isSynchronous = false
 
-        imageManager.requestImage(
+        return imageManager.requestImage(
             for: asset,
             targetSize: resolvedSize,
             contentMode: contentMode,
@@ -265,6 +268,11 @@ final class PhotoLibraryService: PhotoLibraryServicing {
             let callbacks = self.takeInFlightCallbacks(for: cacheKey, keepRegistered: isDegraded)
             callbacks.forEach { $0(image) }
         }
+    }
+
+    func cancelImageRequest(_ requestID: PHImageRequestID) {
+        guard requestID != PHInvalidImageRequestID else { return }
+        imageManager.cancelImageRequest(requestID)
     }
 
     func startCachingImages(

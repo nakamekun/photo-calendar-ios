@@ -51,7 +51,8 @@ struct PhotoDetailView: View {
                         asset: item.asset,
                         contentMode: .aspectFit,
                         targetSize: CGSize(width: screenBounds.width * scale, height: screenBounds.height * scale),
-                        deliveryMode: .opportunistic
+                        deliveryMode: selectedAssetID == item.id ? .opportunistic : .fastFormat,
+                        upgradedDeliveryMode: selectedAssetID == item.id ? .highQualityFormat : nil
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     .padding(.horizontal, 20)

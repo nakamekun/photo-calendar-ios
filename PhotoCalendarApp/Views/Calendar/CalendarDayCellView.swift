@@ -26,7 +26,8 @@ struct CalendarThumbnailContentView: View {
                 asset: item.asset,
                 contentMode: .aspectFill,
                 targetSize: targetSize,
-                deliveryMode: .opportunistic,
+                deliveryMode: .fastFormat,
+                upgradedDeliveryMode: .opportunistic,
                 cornerRadius: cornerRadius,
                 showsProgress: showsProgress
             )
