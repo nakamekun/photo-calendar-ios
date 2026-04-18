@@ -34,6 +34,8 @@ struct CalendarHeaderView: View {
                 }
                 .buttonStyle(.plain)
                 .background(.thinMaterial, in: Circle())
+                .disabled(viewModel.canShowNextMonth == false)
+                .opacity(viewModel.canShowNextMonth ? 1 : 0.35)
             }
         }
     }

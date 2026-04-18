@@ -46,20 +46,7 @@ struct DayPhotosView: View {
         .background(Color(.systemGroupedBackground))
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
-        .navigationBarBackButtonHidden(true)
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    onReturnToCalendar()
-                    dismiss()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "chevron.left")
-                        Text("Calendar")
-                    }
-                }
-            }
-
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 10) {
                     dayShiftButton(

@@ -297,16 +297,9 @@ private struct MemoriesTimelineView: View {
     let showCalendar: () -> Void
     @State private var shouldRenderEntries = false
     @State private var selectedDate = Date().startOfDay()
+    @State private var memoryTimelineCacheTask: Task<Void, Never>?
 
     private let calendar = Calendar.current
-    private let monthSymbols = Calendar.current.shortMonthSymbols
-
-    private let monthDayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "MMM d"
-        return formatter
-    }()
 
     var body: some View {
         let entries = shouldRenderEntries ? photoLibraryViewModel.memoryTimelinePreviewItems : []
@@ -412,9 +405,15 @@ private struct MemoriesTimelineView: View {
         )
         .task(id: photoLibraryViewModel.lastUpdated) {
             guard shouldRenderEntries else { return }
-            photoLibraryViewModel.prepareMemoryTimelineCache(
-                targetSize: CGSize(width: 480, height: 600)
-            )
+            memoryTimelineCacheTask?.cancel()
+            memoryTimelineCacheTask = Task {
+                try? await Task.sleep(nanoseconds: 250_000_000)
+                guard Task.isCancelled == false else { return }
+                photoLibraryViewModel.prepareMemoryTimelineCache(
+                    targetSize: CGSize(width: 480, height: 600)
+                )
+                memoryTimelineCacheTask = nil
+            }
         }
         .task {
             if photoLibraryViewModel.isPreviewMode {
@@ -424,10 +423,19 @@ private struct MemoriesTimelineView: View {
             guard shouldRenderEntries == false else { return }
             try? await Task.sleep(nanoseconds: 250_000_000)
             shouldRenderEntries = true
+            photoLibraryViewModel.prepareMemoryTimelineData(initialDate: selectedDate)
+        }
+        .onChange(of: selectedDate) { _, newValue in
+            guard shouldRenderEntries, photoLibraryViewModel.isPreviewMode == false else { return }
+            photoLibraryViewModel.prepareHistoryMonth(for: newValue)
         }
         .onChange(of: shouldRenderEntries) { _, ready in
             guard ready, let firstEntry = entries.first else { return }
             selectedDate = firstEntry.date.startOfDay()
+        }
+        .onDisappear {
+            memoryTimelineCacheTask?.cancel()
+            memoryTimelineCacheTask = nil
         }
     }
 
@@ -439,7 +447,7 @@ private struct MemoriesTimelineView: View {
                     value: plainYearText(for: selectedDate)
                 ) {
                     ForEach(availableYears(from: entries), id: \.self) { year in
-                        Button("\(year)") {
+                        Button(String(year)) {
                             setSelectedDateComponent(year: year)
                         }
                     }
@@ -447,10 +455,10 @@ private struct MemoriesTimelineView: View {
 
                 componentMenu(
                     title: "Month",
-                    value: monthSymbols[calendar.component(.month, from: selectedDate) - 1]
+                    value: plainMonthText(for: selectedDate)
                 ) {
                     ForEach(1...12, id: \.self) { month in
-                        Button(monthSymbols[month - 1]) {
+                        Button(String(month)) {
                             setSelectedDateComponent(month: month)
                         }
                     }
@@ -526,8 +534,12 @@ private struct MemoriesTimelineView: View {
         String(calendar.component(.year, from: date))
     }
 
+    private func plainMonthText(for date: Date) -> String {
+        String(calendar.component(.month, from: date))
+    }
+
     private func memoryDateText(for date: Date) -> String {
-        "\(monthDayFormatter.string(from: date)), \(plainYearText(for: date))"
+        "\(plainMonthText(for: date))/\(calendar.component(.day, from: date)), \(plainYearText(for: date))"
     }
 
     private func availableYears(from entries: [MemoryTimelineEntry]) -> [Int] {

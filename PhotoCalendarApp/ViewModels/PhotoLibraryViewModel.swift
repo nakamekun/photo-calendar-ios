@@ -139,8 +139,6 @@ final class PhotoLibraryViewModel: ObservableObject {
                 self.libraryLoadTask = nil
             }
         }
-
-        startBackgroundMonthBackfillIfNeeded()
     }
 
     func loadDayIfNeeded(_ date: Date) {
@@ -156,7 +154,7 @@ final class PhotoLibraryViewModel: ObservableObject {
         }
 
         if let summary = photoDaySummariesByKey[key] {
-            loadAssets(for: summary, prioritize: .userInitiated, loadsAllAssets: true)
+            loadAssets(for: summary, prioritize: .userInitiated, loadsAllAssets: false)
             prefetchAdjacentDays(around: day)
             return
         }
@@ -166,7 +164,7 @@ final class PhotoLibraryViewModel: ObservableObject {
                 day.startOfMonth(using: calendar),
                 priority: .userInitiated,
                 focusedDay: day,
-                loadFocusedDayFully: true,
+                loadFocusedDayFully: false,
                 showLoading: true
             )
             self.prefetchAdjacentDays(around: day)
@@ -508,6 +506,24 @@ final class PhotoLibraryViewModel: ObservableObject {
         )
     }
 
+    func prepareMemoryTimelineData(initialDate: Date = .now) {
+        let targetMonth = initialDate.startOfMonth(using: calendar)
+
+        Task {
+            await self.loadMonthIfNeeded(targetMonth, priority: .userInitiated, showLoading: true)
+            self.prefetchMonths(around: targetMonth)
+            self.startBackgroundMonthBackfillIfNeeded()
+        }
+    }
+
+    func prepareHistoryMonth(for date: Date) {
+        let targetMonth = date.startOfMonth(using: calendar)
+
+        Task {
+            await self.loadMonthIfNeeded(targetMonth, priority: .userInitiated)
+        }
+    }
+
     private func loadMonthIfNeeded(
         _ month: Date,
         priority: TaskPriority,
@@ -695,7 +711,6 @@ final class PhotoLibraryViewModel: ObservableObject {
             if Task.isCancelled { return }
 
             self.loadLibrary()
-            self.prefetchMonths(around: Date().startOfMonth(using: self.calendar))
             self.initialBootstrapTask = nil
         }
     }
@@ -705,7 +720,7 @@ final class PhotoLibraryViewModel: ObservableObject {
             guard let adjacentDay = calendar.date(byAdding: .day, value: offset, to: day) else { continue }
             let key = DayKeyFormatter.dayString(from: adjacentDay)
             if let summary = photoDaySummariesByKey[key] {
-                loadAssets(for: summary, prioritize: .utility, loadsAllAssets: true)
+                loadAssets(for: summary, prioritize: .utility, loadsAllAssets: false)
                 continue
             }
 
@@ -714,7 +729,7 @@ final class PhotoLibraryViewModel: ObservableObject {
                     adjacentDay.startOfMonth(using: calendar),
                     priority: .utility,
                     focusedDay: adjacentDay,
-                    loadFocusedDayFully: true
+                    loadFocusedDayFully: false
                 )
             }
         }

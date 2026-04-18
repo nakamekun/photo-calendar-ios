@@ -26,11 +26,16 @@ final class CalendarViewModel: ObservableObject {
         calendar.isDate(displayedMonth, equalTo: .now, toGranularity: .month)
     }
 
+    var canShowNextMonth: Bool {
+        isCurrentMonth == false
+    }
+
     func showPreviousMonth() {
         displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
     }
 
     func showNextMonth() {
+        guard canShowNextMonth else { return }
         displayedMonth = calendar.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
     }
 
