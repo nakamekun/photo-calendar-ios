@@ -30,6 +30,26 @@ final class CalendarViewModel: ObservableObject {
         isCurrentMonth == false
     }
 
+    var displayedYear: Int {
+        calendar.component(.year, from: displayedMonth)
+    }
+
+    var displayedMonthNumber: Int {
+        calendar.component(.month, from: displayedMonth)
+    }
+
+    var currentYear: Int {
+        calendar.component(.year, from: .now)
+    }
+
+    var currentMonthNumber: Int {
+        calendar.component(.month, from: .now)
+    }
+
+    var selectableYears: [Int] {
+        Array(stride(from: currentYear, through: 2000, by: -1))
+    }
+
     func showPreviousMonth() {
         displayedMonth = calendar.date(byAdding: .month, value: -1, to: displayedMonth) ?? displayedMonth
     }
@@ -42,5 +62,17 @@ final class CalendarViewModel: ObservableObject {
     func jumpToToday() {
         let components = calendar.dateComponents([.year, .month], from: Date())
         displayedMonth = calendar.date(from: components) ?? displayedMonth
+    }
+
+    func canSelect(year: Int, month: Int) -> Bool {
+        let selected = calendar.date(from: DateComponents(year: year, month: month, day: 1))
+        let current = calendar.date(from: DateComponents(year: currentYear, month: currentMonthNumber, day: 1))
+        guard let selected, let current else { return false }
+        return selected <= current
+    }
+
+    func setDisplayedMonth(year: Int, month: Int) {
+        guard canSelect(year: year, month: month) else { return }
+        displayedMonth = calendar.date(from: DateComponents(year: year, month: month, day: 1)) ?? displayedMonth
     }
 }

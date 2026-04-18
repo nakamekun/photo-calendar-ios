@@ -135,9 +135,7 @@ struct CalendarView: View {
     private var calendarPage: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    calendarIntro
-                        .id(SectionID.intro)
+                VStack(alignment: .leading, spacing: 20) {
                     calendarSection
                         .id(SectionID.calendar)
 
@@ -194,8 +192,8 @@ struct CalendarView: View {
         .padding(.bottom, 8)
     }
 
-    private var calendarIntro: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    private var calendarSection: some View {
+        VStack(alignment: .leading, spacing: 18) {
             if photoLibraryViewModel.showsPreviewDebugBadge {
                 Text("Preview Mode Enabled")
                     .font(.caption.weight(.semibold))
@@ -205,18 +203,6 @@ struct CalendarView: View {
                     .background(Color.yellow.opacity(0.16), in: Capsule())
             }
 
-            Text("One Photo a Day")
-                .font(.system(size: 28, weight: .bold, design: .rounded))
-                .foregroundStyle(.white)
-
-            Text(heroMessage)
-                .font(.subheadline)
-                .foregroundStyle(Color.white.opacity(0.68))
-        }
-    }
-
-    private var calendarSection: some View {
-        VStack(alignment: .leading, spacing: 18) {
             CalendarHeaderView(viewModel: viewModel)
 
             Text("Days with photos stay blue. Open a date to revisit its memory.")
@@ -243,22 +229,6 @@ struct CalendarView: View {
                 targetSize: CGSize(width: 96, height: 96)
             )
         }
-    }
-
-    private var heroMessage: String {
-        let todayCount = photoLibraryViewModel.isPreviewMode
-            ? photoLibraryViewModel.mockPhotoCount(on: .now)
-            : photoLibraryViewModel.todayAssets().count
-
-        if todayCount == 0 {
-            return "Photos are organized by day, with a representative memory chosen automatically."
-        }
-
-        if photoLibraryViewModel.hasRepresentativePhoto(on: .now) {
-            return "The calendar stays at the center while each day quietly keeps one representative photo."
-        }
-
-        return "You have \(todayCount) photo\(todayCount == 1 ? "" : "s") today. Each day keeps a representative photo automatically."
     }
 
     private func openSettings() {
