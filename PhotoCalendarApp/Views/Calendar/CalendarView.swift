@@ -49,6 +49,15 @@ struct CalendarView: View {
         case calendar
     }
 
+    private struct DeepLinkedDay: Identifiable, Hashable {
+        let date: Date
+        let requestID: UUID
+
+        var id: String {
+            "\(DayKeyFormatter.dayString(from: date))-\(requestID.uuidString)"
+        }
+    }
+
     private enum DisplayMode: String, CaseIterable, Identifiable {
         case calendar = "Calendar"
         case memories = "Memories"
@@ -56,10 +65,14 @@ struct CalendarView: View {
         var id: String { rawValue }
     }
 
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject var photoLibraryViewModel: PhotoLibraryViewModel
     @StateObject private var viewModel = CalendarViewModel()
     @State private var displayMode: DisplayMode
     @State private var shouldShowSecondarySections = false
+    @State private var deepLinkedDay: DeepLinkedDay?
+    @State private var pendingDeepLinkDate: Date?
+    @State private var navigationStackID = UUID()
     private let screenshotVariant: ScreenshotVariant?
 
     init(photoLibraryViewModel: PhotoLibraryViewModel, screenshotVariant: String? = nil) {
@@ -101,8 +114,19 @@ struct CalendarView: View {
                     screenshotHeadline(screenshotVariant.headline)
                 }
             }
+            .navigationDestination(item: $deepLinkedDay) { day in
+                DayPhotosView(date: day.date, photoLibraryViewModel: photoLibraryViewModel)
+            }
+            .onOpenURL { url in
+                openDeepLink(url)
+            }
         }
+        .id(navigationStackID)
         .preferredColorScheme(.dark)
+        .onChange(of: scenePhase) { _, newPhase in
+            guard newPhase == .active, let pendingDeepLinkDate else { return }
+            applyDeepLink(to: pendingDeepLinkDate, receivedWhileInactive: true)
+        }
     }
 
     private var contentView: some View {
@@ -205,7 +229,7 @@ struct CalendarView: View {
 
             CalendarHeaderView(viewModel: viewModel)
 
-            Text("Days with photos stay blue. Open a date to revisit its memory.")
+            Text("Picked days appear on your calendar. Open a date to revisit its memory.")
                 .font(.footnote)
                 .foregroundStyle(Color.white.opacity(0.58))
 
@@ -258,6 +282,57 @@ struct CalendarView: View {
         transaction.disablesAnimations = true
         withTransaction(transaction) {
             proxy.scrollTo(target, anchor: .top)
+        }
+    }
+
+    private func openDeepLink(_ url: URL) {
+        #if DEBUG
+        print("[DeepLink] Received URL: \(url.absoluteString), scenePhase: \(scenePhase)")
+        #endif
+
+        guard url.scheme == AppSharedConfiguration.deepLinkScheme,
+              url.host == "day" else {
+            return
+        }
+
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        let queryDateString = components?.queryItems?.first(where: { $0.name == "date" })?.value
+        let pathDateString = url.pathComponents.dropFirst().first
+        let dateString = queryDateString ?? pathDateString
+        guard let dateString,
+              let date = DayKeyFormatter.date(fromDayString: dateString) else {
+            #if DEBUG
+            print("[DeepLink] Failed to parse date from URL: \(url.absoluteString)")
+            #endif
+            return
+        }
+
+        #if DEBUG
+        print("[DeepLink] Parsed date: \(DayKeyFormatter.dayString(from: date))")
+        #endif
+
+        pendingDeepLinkDate = date
+        guard scenePhase == .active else {
+            return
+        }
+
+        applyDeepLink(to: date, receivedWhileInactive: false)
+    }
+
+    private func applyDeepLink(to date: Date, receivedWhileInactive: Bool) {
+        pendingDeepLinkDate = nil
+        displayMode = .calendar
+        photoLibraryViewModel.prepareHistoryMonth(for: date)
+        deepLinkedDay = nil
+        navigationStackID = UUID()
+
+        Task { @MainActor in
+            await Task.yield()
+            deepLinkedDay = DeepLinkedDay(date: date, requestID: UUID())
+            #if DEBUG
+            let timing = receivedWhileInactive ? "background/cold-start activation" : "active scene"
+            print("[DeepLink] Applied date: \(DayKeyFormatter.dayString(from: date)), timing: \(timing)")
+            #endif
         }
     }
 }
@@ -332,10 +407,7 @@ private struct MemoriesTimelineView: View {
                                                         source: entry.source,
                                                         isSwipeToClearEnabled: photoLibraryViewModel.isMockDataEnabled == false,
                                                         onSwipeToClear: {
-                                                            photoLibraryViewModel.disableAutoPick(
-                                                                for: entry.date,
-                                                                excludingCurrentRepresentative: true
-                                                            )
+                                                            photoLibraryViewModel.clearRepresentativeSelection(for: entry.date)
                                                         }
                                                     )
 

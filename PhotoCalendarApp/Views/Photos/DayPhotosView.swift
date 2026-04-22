@@ -120,8 +120,8 @@ struct DayPhotosView: View {
 
                 Spacer()
 
-                if viewModel.representativeAsset != nil {
-                    Label("Selected", systemImage: "checkmark.circle.fill")
+                if let selectionStatusText = viewModel.selectionStatusText {
+                    Label(selectionStatusText, systemImage: "checkmark.circle.fill")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(Color.blue)
                         .padding(.horizontal, 10)
@@ -142,15 +142,6 @@ struct DayPhotosView: View {
                 .frame(maxWidth: .infinity)
                 .frame(height: representativeHeight)
                 .clipShape(RoundedRectangle(cornerRadius: representativeCornerRadius, style: .continuous))
-                .overlay(alignment: .bottomLeading) {
-                    Text(viewModel.isManualRepresentative ? "Saved: \(viewModel.timeText(for: representativeAsset.creationDate))" : "Picked: \(viewModel.timeText(for: representativeAsset.creationDate))")
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 7)
-                        .background(Color.black.opacity(0.42), in: Capsule())
-                        .padding(14)
-                }
                 .overlay {
                     RoundedRectangle(cornerRadius: representativeCornerRadius, style: .continuous)
                         .strokeBorder(Color.blue.opacity(0.7), lineWidth: 2)
@@ -161,6 +152,8 @@ struct DayPhotosView: View {
                 .highPriorityGesture(representativeClearGesture, including: .gesture)
                 .animation(.spring(response: 0.25, dampingFraction: 0.82), value: representativeSwipeOffset)
                 .shadow(color: Color.blue.opacity(0.08), radius: 10, y: 4)
+
+                representativeActions
             } else {
                 VStack(alignment: .leading, spacing: 12) {
                     RoundedRectangle(cornerRadius: representativeCornerRadius, style: .continuous)
@@ -181,15 +174,17 @@ struct DayPhotosView: View {
                                     .font(.footnote)
                                     .foregroundStyle(.secondary)
                                     .multilineTextAlignment(.center)
+
+                                if viewModel.shouldShowAutoPickResolvedHint {
+                                    Text("Auto-pick disabled for this day")
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary.opacity(0.8))
+                                        .multilineTextAlignment(.center)
+                                }
                             }
                             .padding(20)
                         }
-
-                    if viewModel.isAutoPickDisabled {
-                        Text("Auto-pick is off for this date until you choose a photo manually.")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    representativeActions
                 }
             }
         }
@@ -205,6 +200,36 @@ struct DayPhotosView: View {
                     )
                 )
         )
+    }
+
+    private var representativeActions: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                Button {
+                    viewModel.randomPickRepresentative()
+                } label: {
+                    Label("Random Pick", systemImage: "shuffle")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 11)
+                }
+                .buttonStyle(.bordered)
+                .tint(.blue)
+                .disabled(viewModel.canRandomPick == false)
+
+                if viewModel.canClearRepresentative {
+                    Button(role: .destructive) {
+                        viewModel.clearRepresentative()
+                    } label: {
+                        Label("Remove Pick", systemImage: "xmark.circle")
+                            .font(.subheadline.weight(.semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 11)
+                    }
+                    .buttonStyle(.bordered)
+                }
+            }
+        }
     }
 
     private var representativeClearGesture: some Gesture {

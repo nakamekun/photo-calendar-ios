@@ -1,6 +1,7 @@
 import Foundation
 import OSLog
 import Photos
+import WidgetKit
 
 @MainActor
 final class PhotoLibraryViewModel: ObservableObject {
@@ -19,17 +20,16 @@ final class PhotoLibraryViewModel: ObservableObject {
     private let photoLibraryService: PhotoLibraryServicing
     private let permissionService: PermissionServicing
     private let selectedPhotoStore: SelectedPhotoStoring
-    private let faceDetectionService: FaceDetectionServicing
     private let calendar: Calendar
     private let logger = Logger(subsystem: Bundle.main.bundleIdentifier ?? "PhotoCalendarApp", category: "RepresentativePhoto")
     private var hasStartedInitialLoad = false
     private var calendarDaysCache: [String: [CalendarDay]] = [:]
     private var dayLoadTasks: [String: Task<Void, Never>] = [:]
-    private var optimizationTasks: [String: Task<Void, Never>] = [:]
     private var libraryLoadTask: Task<Void, Never>?
-    private var autoPickTask: Task<Void, Never>?
     private var monthSummaryLoadTasks: [String: Task<Void, Never>] = [:]
+    private var monthAutoPickTasks: [String: Task<Void, Never>] = [:]
     private var loadedMonthKeys: Set<String> = []
+    private var monthsNeedingAutoPickAfterLoad: Set<String> = []
     private var backgroundMonthBackfillTask: Task<Void, Never>?
     private var initialBootstrapTask: Task<Void, Never>?
 
@@ -62,7 +62,7 @@ final class PhotoLibraryViewModel: ObservableObject {
     private var representativeSelections: [String: String]
     private var cachedSelectionsByDay: [String: CachedDaySelection]
     private var excludedIdentifiersByDay: [String: Set<String>]
-    private var autoPickDisabledDayKeys: Set<String>
+    private var autoPickResolvedDayKeys: Set<String>
     private var dayStates: [String: DayPhotoState] = [:]
     private var photoDaySummariesByKey: [String: PhotoDaySummary] = [:]
 
@@ -70,7 +70,6 @@ final class PhotoLibraryViewModel: ObservableObject {
         photoLibraryService: PhotoLibraryServicing = PhotoLibraryService(),
         permissionService: PermissionServicing = PermissionService(),
         selectedPhotoStore: SelectedPhotoStoring = SelectedPhotoStore(),
-        faceDetectionService: FaceDetectionServicing? = nil,
         isPreviewMode: Bool = false,
         isMockDataEnabled: Bool = false,
         showsPreviewDebugBadge: Bool = true,
@@ -80,7 +79,6 @@ final class PhotoLibraryViewModel: ObservableObject {
         self.photoLibraryService = photoLibraryService
         self.permissionService = permissionService
         self.selectedPhotoStore = selectedPhotoStore
-        self.faceDetectionService = faceDetectionService ?? FaceDetectionService(photoLibraryService: photoLibraryService)
         self.isPreviewMode = isPreviewMode
         self.isMockDataEnabled = isPreviewMode || isMockDataEnabled
         self.showsPreviewDebugBadge = isPreviewMode && showsPreviewDebugBadge
@@ -89,7 +87,8 @@ final class PhotoLibraryViewModel: ObservableObject {
         self.authorizationState = permissionService.currentStatus()
         self.cachedSelectionsByDay = selectedPhotoStore.cachedSelections()
         self.excludedIdentifiersByDay = selectedPhotoStore.cachedExcludedIdentifiers()
-        self.autoPickDisabledDayKeys = selectedPhotoStore.cachedAutoPickDisabledDates()
+        self.autoPickResolvedDayKeys = selectedPhotoStore.cachedAutoPickResolvedDates()
+            .union(self.cachedSelectionsByDay.keys)
         self.representativeSelections = self.cachedSelectionsByDay.mapValues(\.representativeIdentifier)
     }
 
@@ -129,12 +128,16 @@ final class PhotoLibraryViewModel: ObservableObject {
     func loadLibrary() {
         guard authorizationState.canReadLibrary else { return }
         libraryLoadTask?.cancel()
-        autoPickTask?.cancel()
         isLoading = true
 
         let currentMonth = Date().startOfMonth(using: calendar)
         libraryLoadTask = Task {
-            await self.loadMonthIfNeeded(currentMonth, priority: .userInitiated, showLoading: true)
+            await self.loadMonthIfNeeded(
+                currentMonth,
+                priority: .userInitiated,
+                showLoading: true,
+                autoPickVisibleMonth: true
+            )
             await MainActor.run {
                 self.libraryLoadTask = nil
             }
@@ -221,18 +224,10 @@ final class PhotoLibraryViewModel: ObservableObject {
             return asset
         }
 
-        guard autoPickDisabledDayKeys.contains(key) == false else {
-            return nil
-        }
-
         if let cached = cachedSelectionsByDay[key],
            cached.source == .automatic,
            let asset = assetLookup[cached.representativeIdentifier] {
             return asset
-        }
-
-        if let representativeID = representativeSelections[key] {
-            return assetLookup[representativeID]
         }
 
         return nil
@@ -249,47 +244,29 @@ final class PhotoLibraryViewModel: ObservableObject {
         return cachedSelectionsByDay[key]?.source == .manual
     }
 
-    func isAutoPickDisabled(for date: Date) -> Bool {
-        autoPickDisabledDayKeys.contains(DayKeyFormatter.dayString(from: calendar.startOfDay(for: date)))
-    }
-
-    func canExcludeAutoPickedRepresentative(on date: Date) -> Bool {
+    func selectionSource(for date: Date) -> DaySelectionSource? {
         let key = DayKeyFormatter.dayString(from: calendar.startOfDay(for: date))
-        guard autoPickDisabledDayKeys.contains(key) == false else { return false }
-        guard let representativeID = representativeSelections[key] ?? dayStates[key]?.representativeAssetID else {
-            return false
-        }
-
-        return assetLookup[representativeID] != nil
+        return cachedSelectionsByDay[key]?.source
     }
 
-    func excludeAutoPickedRepresentative(on date: Date) {
-        disableAutoPick(for: date, excludingCurrentRepresentative: true)
+    func isAutoPickResolved(for date: Date) -> Bool {
+        let key = DayKeyFormatter.dayString(from: calendar.startOfDay(for: date))
+        return autoPickResolvedDayKeys.contains(key)
     }
 
-    func disableAutoPick(for date: Date, excludingCurrentRepresentative: Bool) {
+    func clearRepresentativeSelection(for date: Date) {
         let day = calendar.startOfDay(for: date)
         let key = DayKeyFormatter.dayString(from: day)
-        guard let representativeID = representativeSelections[key] ?? dayStates[key]?.representativeAssetID else { return }
-
-        logger.notice("Disabling auto-pick for day \(key, privacy: .public). representative=\(representativeID, privacy: .public)")
-
-        if excludingCurrentRepresentative {
-            selectedPhotoStore.excludeIdentifier(representativeID, for: day)
-            excludedIdentifiersByDay[key, default: []].insert(representativeID)
-        }
-
-        selectedPhotoStore.setAutoPickDisabled(true, for: day)
-        autoPickDisabledDayKeys.insert(key)
-
-        optimizationTasks[key]?.cancel()
-        optimizationTasks[key] = nil
 
         selectedPhotoStore.removeRepresentativeIdentifier(for: day)
+        selectedPhotoStore.setAutoPickResolved(true, for: day)
         cachedSelectionsByDay.removeValue(forKey: key)
         representativeSelections.removeValue(forKey: key)
+        autoPickResolvedDayKeys.insert(key)
         dayStates[key]?.representativeAssetID = nil
-        rebuildDerivedCaches()
+        invalidateCalendarCache(for: [day])
+        refreshTimelineDerivedCaches(referenceDate: day, refreshPreviewStrip: calendar.isDateInToday(day))
+        reloadRandomMemoryWidgetIfNeeded(for: day)
         lastUpdated = Date()
     }
 
@@ -298,14 +275,14 @@ final class PhotoLibraryViewModel: ObservableObject {
         selectedPhotoStore.resetAllRepresentativeSelections()
         cachedSelectionsByDay.removeAll(keepingCapacity: true)
         representativeSelections.removeAll(keepingCapacity: true)
-        autoPickTask?.cancel()
+        autoPickResolvedDayKeys.removeAll(keepingCapacity: true)
 
         for key in dayStates.keys {
-            let latestAssetID = dayStates[key]?.latestAssetID
-            dayStates[key]?.representativeAssetID = autoPickDisabledDayKeys.contains(key) ? nil : latestAssetID
+            dayStates[key]?.representativeAssetID = nil
         }
 
         rebuildDerivedCaches()
+        WidgetCenter.shared.reloadTimelines(ofKind: AppSharedConfiguration.randomMemoryWidgetKind)
         lastUpdated = Date()
     }
 
@@ -320,13 +297,20 @@ final class PhotoLibraryViewModel: ObservableObject {
             source: .manual,
             for: day
         )
-        selectedPhotoStore.setAutoPickDisabled(false, for: day)
-        autoPickDisabledDayKeys.remove(key)
         dayStates[key]?.representativeAssetID = asset.id
-        optimizationTasks[key]?.cancel()
-        optimizationTasks[key] = nil
         rebuildDerivedCaches()
         lastUpdated = Date()
+    }
+
+    func setRandomRepresentativeAsset(for date: Date) -> PhotoAssetItem? {
+        let day = calendar.startOfDay(for: date)
+        let candidates = manualPickCandidates(from: assets(for: day))
+        guard let selected = candidates.randomElement() else { return nil }
+
+        // Random Pick replaces any existing representative for the day.
+        // This keeps one clear picked photo per calendar day.
+        setManualRepresentativeAsset(selected, for: day)
+        return selected
     }
 
     func hasRepresentativePhoto(on date: Date) -> Bool {
@@ -420,10 +404,9 @@ final class PhotoLibraryViewModel: ObservableObject {
             }
 
             let key = DayKeyFormatter.dayString(from: date)
-            let dayState = dayStates[key]
             let daySummary = photoDaySummariesByKey[key]
-            let representativeAsset = representativeSelections[key].flatMap { assetLookup[$0] }
-            let latestAsset = dayState?.latestAssetID.flatMap { assetLookup[$0] }
+            let representativeAsset = cachedSelectionsByDay[key]
+                .flatMap { assetLookup[$0.representativeIdentifier] }
             let mockEntry = mockEntries[key]
             let photoCount = max(daySummary?.photoCount ?? 0, mockEntry?.photoCount ?? 0)
 
@@ -437,7 +420,6 @@ final class PhotoLibraryViewModel: ObservableObject {
                 representativeAsset: representativeAsset,
                 thumbnailSource: thumbnailSource(
                     representativeAsset: representativeAsset,
-                    latestAsset: latestAsset,
                     mockEntry: mockEntry
                 )
             )
@@ -486,7 +468,11 @@ final class PhotoLibraryViewModel: ObservableObject {
     func prepareCalendarThumbnailCache(for month: Date, targetSize: CGSize) {
         let monthStart = month.startOfMonth(using: calendar)
         Task {
-            await self.loadMonthIfNeeded(monthStart, priority: .userInitiated)
+            await self.loadMonthIfNeeded(
+                monthStart,
+                priority: .userInitiated,
+                autoPickVisibleMonth: true
+            )
         }
 
         let assets = calendarDays(for: monthStart).compactMap { day -> PHAsset? in
@@ -565,13 +551,17 @@ final class PhotoLibraryViewModel: ObservableObject {
         priority: TaskPriority,
         focusedDay: Date? = nil,
         loadFocusedDayFully: Bool = false,
-        showLoading: Bool = false
+        showLoading: Bool = false,
+        autoPickVisibleMonth: Bool = false
     ) async {
         let monthStart = month.startOfMonth(using: calendar)
         let monthKey = DayKeyFormatter.dayString(from: monthStart)
         if loadedMonthKeys.contains(monthKey) {
             if let focusedDay {
                 loadFocusedDayIfAvailable(focusedDay, fully: loadFocusedDayFully)
+            }
+            if autoPickVisibleMonth {
+                scheduleVisibleMonthAutoPickIfNeeded(for: monthStart)
             }
             if showLoading {
                 isLoading = false
@@ -580,7 +570,14 @@ final class PhotoLibraryViewModel: ObservableObject {
         }
 
         if monthSummaryLoadTasks[monthKey] != nil {
+            if autoPickVisibleMonth {
+                monthsNeedingAutoPickAfterLoad.insert(monthKey)
+            }
             return
+        }
+
+        if autoPickVisibleMonth {
+            monthsNeedingAutoPickAfterLoad.insert(monthKey)
         }
 
         if showLoading {
@@ -618,12 +615,16 @@ final class PhotoLibraryViewModel: ObservableObject {
             monthSummaryLoadTasks.removeValue(forKey: loadedMonthKey)
             loadedMonthKeys.insert(loadedMonthKey)
         }
+        let shouldRunVisibleMonthAutoPick = loadedMonthKey.map {
+            monthsNeedingAutoPickAfterLoad.remove($0) != nil
+        } ?? false
 
         let keyedSummaries = Dictionary(
             uniqueKeysWithValues: summaries.map { (DayKeyFormatter.dayString(from: $0.date), $0) }
         )
         photoDaySummariesByKey.merge(keyedSummaries) { _, new in new }
         applyAutomaticRepresentatives(from: summaries)
+        logAutoPickSummaryStats(summaries)
         if clearLoading {
             isLoading = false
         }
@@ -633,12 +634,18 @@ final class PhotoLibraryViewModel: ObservableObject {
 
         if let focusedDay {
             loadFocusedDayIfAvailable(focusedDay, fully: loadFocusedDayFully)
-        } else if let latestSummary = summaries.first, dayStates[DayKeyFormatter.dayString(from: latestSummary.date)] == nil {
+        } else if clearLoading,
+                  let latestSummary = summaries.first,
+                  dayStates[DayKeyFormatter.dayString(from: latestSummary.date)] == nil {
             loadAssets(for: latestSummary, prioritize: .userInitiated)
         }
 
         if summaries.isEmpty == false, triggerAutoPick {
             prefetchRepresentativeAssets(for: summaries, priority: .utility)
+        }
+
+        if shouldRunVisibleMonthAutoPick {
+            scheduleVisibleMonthAutoPick(summaries, monthKey: loadedMonthKey ?? "")
         }
     }
 
@@ -647,19 +654,16 @@ final class PhotoLibraryViewModel: ObservableObject {
             let day = calendar.startOfDay(for: summary.date)
             let key = DayKeyFormatter.dayString(from: day)
 
-            if autoPickDisabledDayKeys.contains(key) {
-                continue
-            }
-
             if let cached = cachedSelectionsByDay[key], cached.source == .manual {
                 representativeSelections[key] = cached.representativeIdentifier
                 continue
             }
 
-            let representativeID = summary.representativeAssetIdentifier ?? summary.latestAssetIdentifier
-            representativeSelections[key] = representativeID
-            if let representativeID, dayStates[key] != nil {
-                dayStates[key]?.representativeAssetID = representativeID
+            if let cached = cachedSelectionsByDay[key], cached.source == .automatic {
+                representativeSelections[key] = cached.representativeIdentifier
+                if dayStates[key] != nil {
+                    dayStates[key]?.representativeAssetID = cached.representativeIdentifier
+                }
             }
         }
     }
@@ -667,8 +671,9 @@ final class PhotoLibraryViewModel: ObservableObject {
     private func prefetchRepresentativeAssets(for summaries: [PhotoDaySummary], priority: TaskPriority) {
         let identifiers = Array(
             Set(
-                summaries.compactMap {
-                    $0.representativeAssetIdentifier ?? $0.latestAssetIdentifier
+                summaries.compactMap { summary -> String? in
+                    let key = DayKeyFormatter.dayString(from: summary.date)
+                    return cachedSelectionsByDay[key]?.representativeIdentifier
                 }
             )
         )
@@ -684,6 +689,85 @@ final class PhotoLibraryViewModel: ObservableObject {
                 self.invalidateCalendarCache(for: summaries.map(\.date))
                 self.refreshTimelineDerivedCaches(refreshPreviewStrip: true)
                 lastUpdated = Date()
+            }
+        }
+    }
+
+    private func scheduleVisibleMonthAutoPickIfNeeded(for month: Date) {
+        let monthStart = month.startOfMonth(using: calendar)
+        let monthKey = DayKeyFormatter.dayString(from: monthStart)
+        let monthEnd = calendar.date(byAdding: .month, value: 1, to: monthStart) ?? monthStart
+        let summaries = photoDaySummariesByKey.values
+            .filter { $0.date >= monthStart && $0.date < monthEnd }
+            .sorted { $0.date > $1.date }
+
+        scheduleVisibleMonthAutoPick(summaries, monthKey: monthKey)
+    }
+
+    private func scheduleVisibleMonthAutoPick(_ summaries: [PhotoDaySummary], monthKey: String) {
+        guard monthKey.isEmpty == false else { return }
+
+        let startedAt = Date()
+        let eligibleSummaries = summaries.filter { summary in
+            let key = DayKeyFormatter.dayString(from: summary.date)
+            return shouldAttemptAutoPick(forDayKey: key) && summary.candidateAssetIdentifiers.isEmpty == false
+        }
+        let skippedDays = summaries.count - eligibleSummaries.count
+
+        guard eligibleSummaries.isEmpty == false else {
+            logger.debug("Auto-pick visible month skipped month=\(monthKey, privacy: .public) summaries=\(summaries.count, privacy: .public) skipped=\(skippedDays, privacy: .public)")
+            return
+        }
+
+        guard monthAutoPickTasks[monthKey] == nil else { return }
+
+        let identifiers = Array(Set(eligibleSummaries.flatMap(\.candidateAssetIdentifiers)))
+        logger.debug("Auto-pick visible month scheduled month=\(monthKey, privacy: .public) candidate_days=\(eligibleSummaries.count, privacy: .public) skipped=\(skippedDays, privacy: .public) asset_ids=\(identifiers.count, privacy: .public)")
+
+        monthAutoPickTasks[monthKey] = Task { [photoLibraryService] in
+            let fetchedAssets = await Task.detached(priority: .utility) {
+                photoLibraryService.fetchAssets(localIdentifiers: identifiers).map(PhotoAssetItem.init)
+            }.value
+
+            await MainActor.run {
+                let fetchedByID = Dictionary(uniqueKeysWithValues: fetchedAssets.map { ($0.id, $0) })
+                fetchedAssets.forEach { assetLookup[$0.id] = $0 }
+
+                var changedDates: [Date] = []
+                var resolvedCount = 0
+                var selectedCount = 0
+                var lateSkippedCount = 0
+
+                for summary in eligibleSummaries {
+                    let day = calendar.startOfDay(for: summary.date)
+                    let key = DayKeyFormatter.dayString(from: day)
+                    guard shouldAttemptAutoPick(forDayKey: key) else {
+                        lateSkippedCount += 1
+                        continue
+                    }
+
+                    let items = summary.candidateAssetIdentifiers.compactMap { fetchedByID[$0] }
+                    let candidates = autoPickCandidates(from: items, for: day)
+                    let hadCandidates = candidates.isEmpty == false
+                    applyLightweightAutoPick(for: day, candidates: candidates)
+
+                    if hadCandidates, cachedSelectionsByDay[key] != nil {
+                        selectedCount += 1
+                    } else {
+                        resolvedCount += 1
+                    }
+                    changedDates.append(day)
+                }
+
+                monthAutoPickTasks[monthKey] = nil
+
+                if changedDates.isEmpty == false {
+                    invalidateCalendarCache(for: changedDates)
+                    refreshTimelineDerivedCaches(referenceDate: changedDates.first ?? .now, refreshPreviewStrip: true)
+                    lastUpdated = Date()
+                }
+
+                logger.debug("Auto-pick visible month finished month=\(monthKey, privacy: .public) selected=\(selectedCount, privacy: .public) resolved_empty=\(resolvedCount, privacy: .public) late_skipped=\(lateSkippedCount, privacy: .public) elapsed_ms=\(Date().timeIntervalSince(startedAt) * 1000, privacy: .public)")
             }
         }
     }
@@ -773,31 +857,6 @@ final class PhotoLibraryViewModel: ObservableObject {
         }
     }
 
-    private func startSequentialAutoPick(with summaries: [PhotoDaySummary]) {
-        autoPickTask?.cancel()
-
-        autoPickTask = Task {
-            for summary in summaries {
-                if Task.isCancelled { break }
-                let key = DayKeyFormatter.dayString(from: summary.date)
-
-                if shouldRecomputeSelection(for: summary.date, latestAssetID: summary.latestAssetIdentifier) == false {
-                    if dayStates[key] == nil {
-                        loadAssets(for: summary, prioritize: .utility)
-                    }
-                    continue
-                }
-
-                loadAssets(for: summary, prioritize: .utility)
-
-                while dayLoadTasks[key] != nil || optimizationTasks[key] != nil {
-                    try? await Task.sleep(nanoseconds: 80_000_000)
-                    if Task.isCancelled { break }
-                }
-            }
-        }
-    }
-
     private func loadAssets(for summary: PhotoDaySummary, prioritize priority: TaskPriority, loadsAllAssets: Bool = false) {
         let day = calendar.startOfDay(for: summary.date)
         let key = DayKeyFormatter.dayString(from: day)
@@ -867,7 +926,7 @@ final class PhotoLibraryViewModel: ObservableObject {
             date: day,
             assets: sortedItems,
             latestAssetID: latestAssetID,
-            representativeAssetID: currentRepresentativeID ?? (autoPickDisabledDayKeys.contains(key) ? nil : latestAssetID),
+            representativeAssetID: currentRepresentativeID,
             hasLoadedAllAssets: hasLoadedAllAssets
         )
 
@@ -881,120 +940,24 @@ final class PhotoLibraryViewModel: ObservableObject {
             )
         }
 
-        let automaticCandidates = autoPickCandidates(from: sortedItems, for: day)
-
         if let cachedSelection = cachedSelectionsByDay[key],
            cachedSelection.source == .manual,
-           cachedSelection.latestAssetIdentifier != latestAssetID,
-           let representativeID = dayStates[key]?.representativeAssetID {
+           cachedSelection.latestAssetIdentifier != latestAssetID {
             persistSelection(
-                representativeID: representativeID,
+                representativeID: cachedSelection.representativeIdentifier,
                 latestItem: sortedItems.first,
                 source: .manual,
                 for: day
             )
-        } else if currentRepresentativeID == nil,
-                  autoPickDisabledDayKeys.contains(key) == false,
-                  let autoCandidate = automaticCandidates.first {
-            persistSelection(
-                representativeID: autoCandidate.id,
-                latestItem: sortedItems.first,
-                source: .automatic,
-                for: day
-            )
-            dayStates[key]?.representativeAssetID = autoCandidate.id
+        } else if shouldAttemptAutoPick(forDayKey: key) {
+            let automaticCandidates = autoPickCandidates(from: sortedItems, for: day)
+            applyLightweightAutoPick(for: day, candidates: automaticCandidates)
         }
 
         invalidateCalendarCache(for: [day])
         refreshTimelineDerivedCaches(referenceDate: day, refreshPreviewStrip: calendar.isDateInToday(day))
         lastUpdated = Date()
 
-        guard
-            automaticCandidates.isEmpty == false,
-            autoPickDisabledDayKeys.contains(key) == false
-        else {
-            return
-        }
-    }
-
-    private func shouldRecomputeSelection(for date: Date, latestAssetID: String?) -> Bool {
-        let key = DayKeyFormatter.dayString(from: date)
-        guard let latestAssetID else { return false }
-        if autoPickDisabledDayKeys.contains(key) { return false }
-        guard let cached = cachedSelectionsByDay[key] else { return true }
-        if cached.source == .manual { return false }
-
-        if excludedIdentifiersByDay[key]?.contains(cached.representativeIdentifier) == true {
-            logger.notice("Forcing reevaluation for day \(key, privacy: .public) because cached representative is excluded. identifier=\(cached.representativeIdentifier, privacy: .public)")
-            return true
-        }
-
-        if isScreenshotIdentifier(cached.representativeIdentifier) {
-            logger.notice("Forcing reevaluation for day \(key, privacy: .public) because cached automatic representative is a screenshot. identifier=\(cached.representativeIdentifier, privacy: .public) source=cache")
-            return true
-        }
-
-        return cached.latestAssetIdentifier != latestAssetID
-    }
-
-    private func startOptimizingSelection(for date: Date, candidates: [PhotoAssetItem], force: Bool = false) {
-        let day = calendar.startOfDay(for: date)
-        let key = DayKeyFormatter.dayString(from: day)
-        if force {
-            optimizationTasks[key]?.cancel()
-            optimizationTasks[key] = nil
-        }
-        guard optimizationTasks[key] == nil else { return }
-
-        optimizationTasks[key] = Task { [faceDetectionService] in
-            let best = await Task.detached(priority: .utility) {
-                var bestItem: PhotoAssetItem?
-                var bestScore = -Double.greatestFiniteMagnitude
-
-                for item in candidates {
-                    let score = await faceDetectionService.rankingScore(for: item.asset, targetPixelSize: 240)
-                    if score > bestScore {
-                        bestScore = score
-                        bestItem = item
-                        continue
-                    }
-
-                    if score == bestScore,
-                       let currentBest = bestItem,
-                       item.creationDate > currentBest.creationDate {
-                        bestItem = item
-                    }
-                }
-
-                return bestItem ?? candidates.first
-            }.value
-
-            await self.finishOptimizingSelection(best, for: day)
-        }
-    }
-
-    private func finishOptimizingSelection(_ bestItem: PhotoAssetItem?, for date: Date) async {
-        let day = calendar.startOfDay(for: date)
-        let key = DayKeyFormatter.dayString(from: day)
-        optimizationTasks[key] = nil
-
-        guard
-            let bestItem,
-            let state = dayStates[key],
-            state.representativeAssetID != bestItem.id
-        else {
-            return
-        }
-
-        persistSelection(
-            representativeID: bestItem.id,
-            latestItem: state.assets.first,
-            source: .automatic,
-            for: day
-        )
-        dayStates[key]?.representativeAssetID = bestItem.id
-        rebuildDerivedCaches()
-        lastUpdated = Date()
     }
 
     private func persistSelection(
@@ -1013,6 +976,8 @@ final class PhotoLibraryViewModel: ObservableObject {
         selectedPhotoStore.setCachedSelection(selection, for: date)
         cachedSelectionsByDay[DayKeyFormatter.dayString(from: date)] = selection
         representativeSelections[DayKeyFormatter.dayString(from: date)] = representativeID
+        selectedPhotoStore.setAutoPickResolved(true, for: date)
+        autoPickResolvedDayKeys.insert(DayKeyFormatter.dayString(from: date))
         let dayKey = DayKeyFormatter.dayString(from: date)
         let isScreenshot = isScreenshotIdentifier(representativeID)
         let screenshotState = isScreenshot ? "screenshot" : "non_screenshot"
@@ -1021,6 +986,11 @@ final class PhotoLibraryViewModel: ObservableObject {
         } else {
             logger.notice("Persisted representative for day \(dayKey, privacy: .public). source=\(source.rawValue, privacy: .public) identifier=\(representativeID, privacy: .public) kind=\(screenshotState, privacy: .public)")
         }
+        reloadRandomMemoryWidgetIfNeeded(for: date)
+    }
+
+    private func reloadRandomMemoryWidgetIfNeeded(for date: Date) {
+        WidgetCenter.shared.reloadTimelines(ofKind: AppSharedConfiguration.randomMemoryWidgetKind)
     }
 
     private func warmCachedSelections() async {
@@ -1040,15 +1010,10 @@ final class PhotoLibraryViewModel: ObservableObject {
 
     private func thumbnailSource(
         representativeAsset: PhotoAssetItem?,
-        latestAsset: PhotoAssetItem?,
         mockEntry: MockCalendarEntry?
     ) -> CalendarThumbnailSource? {
         if let representativeAsset {
             return .asset(representativeAsset)
-        }
-
-        if let latestAsset {
-            return .asset(latestAsset)
         }
 
         if let mockEntry {
@@ -1056,6 +1021,61 @@ final class PhotoLibraryViewModel: ObservableObject {
         }
 
         return nil
+    }
+
+    private func applyLightweightAutoPick(for date: Date, candidates providedCandidates: [PhotoAssetItem]? = nil) {
+        let day = calendar.startOfDay(for: date)
+        let key = DayKeyFormatter.dayString(from: day)
+
+        guard shouldAttemptAutoPick(forDayKey: key) else { return }
+
+        let startedAt = Date()
+
+        let candidates = providedCandidates ?? autoPickCandidates(from: assets(for: day), for: day)
+        guard candidates.isEmpty == false else {
+            selectedPhotoStore.setAutoPickResolved(true, for: day)
+            autoPickResolvedDayKeys.insert(key)
+            logger.debug("Auto-pick resolved empty day \(key, privacy: .public). elapsed_ms=\(Date().timeIntervalSince(startedAt) * 1000, privacy: .public)")
+            return
+        }
+
+        guard let selected = candidates.randomElement() else { return }
+        persistSelection(
+            representativeID: selected.id,
+            latestItem: dayStates[key]?.assets.first ?? candidates.first,
+            source: .automatic,
+            for: day
+        )
+        selectedPhotoStore.setAutoPickResolved(true, for: day)
+        autoPickResolvedDayKeys.insert(key)
+        dayStates[key]?.representativeAssetID = selected.id
+        logger.debug("Auto-pick selected for day \(key, privacy: .public). candidates=\(candidates.count, privacy: .public) elapsed_ms=\(Date().timeIntervalSince(startedAt) * 1000, privacy: .public)")
+    }
+
+    private func shouldAttemptAutoPick(forDayKey key: String) -> Bool {
+        cachedSelectionsByDay[key] == nil &&
+        autoPickResolvedDayKeys.contains(key) == false
+    }
+
+    private func logAutoPickSummaryStats(_ summaries: [PhotoDaySummary]) {
+        guard summaries.isEmpty == false else { return }
+
+        var manualOrPicked = 0
+        var resolved = 0
+        var candidateDays = 0
+
+        for summary in summaries {
+            let key = DayKeyFormatter.dayString(from: summary.date)
+            if cachedSelectionsByDay[key] != nil {
+                manualOrPicked += 1
+            } else if autoPickResolvedDayKeys.contains(key) {
+                resolved += 1
+            } else {
+                candidateDays += 1
+            }
+        }
+
+        logger.debug("Auto-pick month scan summaries=\(summaries.count, privacy: .public) candidates=\(candidateDays, privacy: .public) picked_skip=\(manualOrPicked, privacy: .public) resolved_skip=\(resolved, privacy: .public)")
     }
 
     private func rebuildDerivedCaches(referenceDate: Date = .now) {
@@ -1161,10 +1181,6 @@ final class PhotoLibraryViewModel: ObservableObject {
         let dayKeys = Set(dayStates.keys).union(representativeSelections.keys)
 
         let items = dayKeys.compactMap { key -> MemoryTimelineEntry? in
-            guard autoPickDisabledDayKeys.contains(key) == false || cachedSelectionsByDay[key]?.source == .manual else {
-                return nil
-            }
-
             let representativeID = representativeSelections[key]
             guard
                 let representativeID,
@@ -1213,6 +1229,10 @@ final class PhotoLibraryViewModel: ObservableObject {
             item.asset.mediaSubtypes.contains(.photoScreenshot) == false &&
             excluded.contains(item.id) == false
         }
+    }
+
+    private func manualPickCandidates(from items: [PhotoAssetItem]) -> [PhotoAssetItem] {
+        items.filter { $0.asset.mediaSubtypes.contains(.photoScreenshot) == false }
     }
 
     private func isScreenshotIdentifier(_ identifier: String) -> Bool {

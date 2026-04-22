@@ -31,7 +31,23 @@
 		A00000010000000000000016 /* sample in Resources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000018 /* sample */; };
 		A00000010000000000000017 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000019 /* Assets.xcassets */; };
 		A00000010000000000000018 /* FaceDetectionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000020 /* FaceDetectionService.swift */; };
+		A00000010000000000000019 /* AppSharedConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000021 /* AppSharedConfiguration.swift */; };
+		A0000001000000000000001A /* RandomMemoryWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000024 /* RandomMemoryWidget.swift */; };
+		A0000001000000000000001B /* DateKeyFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000005 /* DateKeyFormatter.swift */; };
+		A0000001000000000000001C /* SelectedPhotoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000007 /* SelectedPhotoStore.swift */; };
+		A0000001000000000000001D /* AppSharedConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000010000000000000021 /* AppSharedConfiguration.swift */; };
+		A0000001000000000000001E /* PhotoCalendarWidget.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = B00000010000000000000023 /* PhotoCalendarWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		B00000010000000000000027 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E00000010000000000000002 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E00000010000000000000003;
+			remoteInfo = PhotoCalendarWidget;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		B00000010000000000000001 /* PhotoCalendarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhotoCalendarApp.swift; sourceTree = "<group>"; };
@@ -60,10 +76,23 @@
 		B00000010000000000000018 /* sample */ = {isa = PBXFileReference; lastKnownFileType = folder; path = sample; sourceTree = SOURCE_ROOT; };
 		B00000010000000000000019 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B00000010000000000000020 /* FaceDetectionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaceDetectionService.swift; sourceTree = "<group>"; };
+		B00000010000000000000021 /* AppSharedConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppSharedConfiguration.swift; sourceTree = "<group>"; };
+		B00000010000000000000022 /* PhotoCalendarApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhotoCalendarApp.entitlements; sourceTree = "<group>"; };
+		B00000010000000000000023 /* PhotoCalendarWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = PhotoCalendarWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		B00000010000000000000024 /* RandomMemoryWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RandomMemoryWidget.swift; sourceTree = "<group>"; };
+		B00000010000000000000025 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B00000010000000000000026 /* PhotoCalendarWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhotoCalendarWidget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		C00000010000000000000001 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C00000010000000000000005 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -77,6 +106,7 @@
 			isa = PBXGroup;
 			children = (
 				D00000010000000000000002 /* PhotoCalendarApp */,
+				D0000001000000000000000D /* PhotoCalendarWidget */,
 				D00000010000000000000009 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -140,6 +170,7 @@
 				B00000010000000000000007 /* SelectedPhotoStore.swift */,
 				B00000010000000000000008 /* PhotoLibraryService.swift */,
 				B00000010000000000000020 /* FaceDetectionService.swift */,
+				B00000010000000000000021 /* AppSharedConfiguration.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -149,6 +180,7 @@
 			children = (
 				B00000010000000000000019 /* Assets.xcassets */,
 				B00000010000000000000016 /* Info.plist */,
+				B00000010000000000000022 /* PhotoCalendarApp.entitlements */,
 				B00000010000000000000018 /* sample */,
 			);
 			path = Resources;
@@ -158,6 +190,7 @@
 			isa = PBXGroup;
 			children = (
 				B00000010000000000000017 /* PhotoCalendarApp.app */,
+				B00000010000000000000023 /* PhotoCalendarWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -193,6 +226,16 @@
 			path = Components;
 			sourceTree = "<group>";
 		};
+		D0000001000000000000000D /* PhotoCalendarWidget */ = {
+			isa = PBXGroup;
+			children = (
+				B00000010000000000000024 /* RandomMemoryWidget.swift */,
+				B00000010000000000000025 /* Info.plist */,
+				B00000010000000000000026 /* PhotoCalendarWidget.entitlements */,
+			);
+			path = PhotoCalendarWidget;
+			sourceTree = "<group>";
+		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -203,15 +246,34 @@
 				C00000010000000000000002 /* Sources */,
 				C00000010000000000000001 /* Frameworks */,
 				C00000010000000000000003 /* Resources */,
+				C00000010000000000000007 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				B00000010000000000000028 /* PBXTargetDependency */,
 			);
 			name = PhotoCalendarApp;
 			productName = PhotoCalendarApp;
 			productReference = B00000010000000000000017 /* PhotoCalendarApp.app */;
 			productType = "com.apple.product-type.application";
+		};
+		E00000010000000000000003 /* PhotoCalendarWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = F00000010000000000000009 /* Build configuration list for PBXNativeTarget "PhotoCalendarWidget" */;
+			buildPhases = (
+				C00000010000000000000004 /* Sources */,
+				C00000010000000000000005 /* Frameworks */,
+				C00000010000000000000006 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = PhotoCalendarWidget;
+			productName = PhotoCalendarWidget;
+			productReference = B00000010000000000000023 /* PhotoCalendarWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -224,6 +286,9 @@
 				LastUpgradeCheck = 2640;
 				TargetAttributes = {
 					E00000010000000000000001 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+					E00000010000000000000003 = {
 						CreatedOnToolsVersion = 16.0;
 					};
 				};
@@ -242,6 +307,7 @@
 			projectRoot = "";
 			targets = (
 				E00000010000000000000001 /* PhotoCalendarApp */,
+				E00000010000000000000003 /* PhotoCalendarWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -253,6 +319,13 @@
 			files = (
 				A00000010000000000000017 /* Assets.xcassets in Resources */,
 				A00000010000000000000016 /* sample in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C00000010000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -273,6 +346,7 @@
 				A00000010000000000000008 /* PhotoLibraryService.swift in Sources */,
 				A00000010000000000000009 /* PhotoLibraryViewModel.swift in Sources */,
 				A00000010000000000000018 /* FaceDetectionService.swift in Sources */,
+				A00000010000000000000019 /* AppSharedConfiguration.swift in Sources */,
 				A0000001000000000000000A /* CalendarViewModel.swift in Sources */,
 				A0000001000000000000000B /* DayPhotosViewModel.swift in Sources */,
 				A0000001000000000000000C /* PermissionView.swift in Sources */,
@@ -288,7 +362,40 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		C00000010000000000000004 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A0000001000000000000001A /* RandomMemoryWidget.swift in Sources */,
+				A0000001000000000000001B /* DateKeyFormatter.swift in Sources */,
+				A0000001000000000000001C /* SelectedPhotoStore.swift in Sources */,
+				A0000001000000000000001D /* AppSharedConfiguration.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		C00000010000000000000007 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A0000001000000000000001E /* PhotoCalendarWidget.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		B00000010000000000000028 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E00000010000000000000003 /* PhotoCalendarWidget */;
+			targetProxy = B00000010000000000000027 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		F00000010000000000000003 /* Debug */ = {
@@ -410,8 +517,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PhotoCalendarApp/Resources/PhotoCalendarApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoCalendarApp/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -419,7 +527,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zec.PhotoCalendarApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
@@ -435,8 +543,9 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = PhotoCalendarApp/Resources/PhotoCalendarApp.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 4;
+				CURRENT_PROJECT_VERSION = 5;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = PhotoCalendarApp/Resources/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -444,10 +553,66 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.2;
+				MARKETING_VERSION = 1.3;
 				PRODUCT_BUNDLE_IDENTIFIER = com.zec.PhotoCalendarApp;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		F00000010000000000000007 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PhotoCalendarWidget/PhotoCalendarWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = Q35JCJ654D;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PhotoCalendarWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zec.PhotoCalendarApp.PhotoCalendarWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		F00000010000000000000008 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = PhotoCalendarWidget/PhotoCalendarWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 5;
+				DEVELOPMENT_TEAM = Q35JCJ654D;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = PhotoCalendarWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.3;
+				PRODUCT_BUNDLE_IDENTIFIER = com.zec.PhotoCalendarApp.PhotoCalendarWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
@@ -472,6 +637,15 @@
 			buildConfigurations = (
 				F00000010000000000000003 /* Debug */,
 				F00000010000000000000004 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		F00000010000000000000009 /* Build configuration list for PBXNativeTarget "PhotoCalendarWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				F00000010000000000000007 /* Debug */,
+				F00000010000000000000008 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

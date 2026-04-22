@@ -23,9 +23,8 @@ protocol SelectedPhotoStoring {
     func excludedIdentifiers(for date: Date) -> Set<String>
     func cachedExcludedIdentifiers() -> [String: Set<String>]
     func excludeIdentifier(_ identifier: String, for date: Date)
-    func isAutoPickDisabled(for date: Date) -> Bool
-    func cachedAutoPickDisabledDates() -> Set<String>
-    func setAutoPickDisabled(_ isDisabled: Bool, for date: Date)
+    func cachedAutoPickResolvedDates() -> Set<String>
+    func setAutoPickResolved(_ isResolved: Bool, for date: Date)
     func setCachedSelection(_ selection: CachedDaySelection, for date: Date)
     func removeRepresentativeIdentifier(for date: Date)
     func resetAllRepresentativeSelections()
@@ -35,7 +34,7 @@ final class SelectedPhotoStore: SelectedPhotoStoring {
     private let userDefaults: UserDefaults
     private let storageKey = "selected-photo-by-day-v2"
     private let excludedStorageKey = "excluded-photo-identifiers-by-day-v1_1"
-    private let autoPickDisabledStorageKey = "auto-pick-disabled-days-v1_1"
+    private let autoPickResolvedStorageKey = "auto-pick-resolved-days-v1"
     private let legacyStorageKey = "selected-photo-by-day"
     private let streakKey = "current-photo-streak"
     private let lastSelectedDateKey = "last-selected-photo-date"
@@ -44,7 +43,13 @@ final class SelectedPhotoStore: SelectedPhotoStoring {
     private let decoder = JSONDecoder()
 
     init(userDefaults: UserDefaults = .standard) {
-        self.userDefaults = userDefaults
+        if userDefaults === UserDefaults.standard,
+           let sharedDefaults = UserDefaults(suiteName: AppSharedConfiguration.appGroupIdentifier) {
+            self.userDefaults = sharedDefaults
+            migrateStandardDefaultsIfNeeded(to: sharedDefaults)
+        } else {
+            self.userDefaults = userDefaults
+        }
     }
 
     var selections: [String: String] {
@@ -115,29 +120,25 @@ final class SelectedPhotoStore: SelectedPhotoStoring {
         persistExcludedIdentifiers(updated)
     }
 
-    func isAutoPickDisabled(for date: Date) -> Bool {
-        cachedAutoPickDisabledDates().contains(DayKeyFormatter.dayString(from: date))
-    }
-
-    func cachedAutoPickDisabledDates() -> Set<String> {
-        guard let stored = userDefaults.array(forKey: autoPickDisabledStorageKey) as? [String] else {
+    func cachedAutoPickResolvedDates() -> Set<String> {
+        guard let stored = userDefaults.array(forKey: autoPickResolvedStorageKey) as? [String] else {
             return []
         }
 
         return Set(stored)
     }
 
-    func setAutoPickDisabled(_ isDisabled: Bool, for date: Date) {
+    func setAutoPickResolved(_ isResolved: Bool, for date: Date) {
         let key = DayKeyFormatter.dayString(from: date)
-        var updated = cachedAutoPickDisabledDates()
+        var updated = cachedAutoPickResolvedDates()
 
-        if isDisabled {
+        if isResolved {
             updated.insert(key)
         } else {
             updated.remove(key)
         }
 
-        userDefaults.set(Array(updated).sorted(), forKey: autoPickDisabledStorageKey)
+        userDefaults.set(Array(updated).sorted(), forKey: autoPickResolvedStorageKey)
     }
 
     func setCachedSelection(_ selection: CachedDaySelection, for date: Date) {
@@ -159,6 +160,7 @@ final class SelectedPhotoStore: SelectedPhotoStoring {
         userDefaults.removeObject(forKey: legacyStorageKey)
         userDefaults.removeObject(forKey: streakKey)
         userDefaults.removeObject(forKey: lastSelectedDateKey)
+        userDefaults.removeObject(forKey: autoPickResolvedStorageKey)
     }
 
     private func persist(_ selections: [String: CachedDaySelection]) {
@@ -198,5 +200,30 @@ final class SelectedPhotoStore: SelectedPhotoStoring {
         }
 
         userDefaults.set(selectedDay, forKey: lastSelectedDateKey)
+    }
+
+    private func migrateStandardDefaultsIfNeeded(to sharedDefaults: UserDefaults) {
+        let migrationKey = "selected-photo-store-app-group-migrated-v1"
+        guard sharedDefaults.bool(forKey: migrationKey) == false else { return }
+
+        let standardDefaults = UserDefaults.standard
+        [
+            storageKey,
+            excludedStorageKey,
+            autoPickResolvedStorageKey,
+            legacyStorageKey,
+            streakKey,
+            lastSelectedDateKey,
+        ].forEach { key in
+            guard sharedDefaults.object(forKey: key) == nil,
+                  let value = standardDefaults.object(forKey: key)
+            else {
+                return
+            }
+
+            sharedDefaults.set(value, forKey: key)
+        }
+
+        sharedDefaults.set(true, forKey: migrationKey)
     }
 }

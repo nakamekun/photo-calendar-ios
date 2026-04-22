@@ -1,13 +1,14 @@
 import Combine
 import Foundation
+import Photos
 
 @MainActor
 final class DayPhotosViewModel: ObservableObject {
     @Published private(set) var assets: [PhotoAssetItem] = []
     @Published private(set) var date: Date
     @Published private(set) var representativeAssetID: String?
-    @Published private(set) var isManualRepresentative = false
-    @Published private(set) var isAutoPickDisabled = false
+    @Published private(set) var selectionSource: DaySelectionSource?
+    @Published private(set) var isAutoPickResolved = false
     @Published var displayedAssetID: String?
 
     private let photoLibraryViewModel: PhotoLibraryViewModel
@@ -19,14 +20,6 @@ final class DayPhotosViewModel: ObservableObject {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "MMM d"
-        return formatter
-    }()
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeStyle = .short
-        formatter.dateStyle = .none
         return formatter
     }()
 
@@ -45,12 +38,12 @@ final class DayPhotosViewModel: ObservableObject {
     }
 
     var helperText: String {
-        if isManualRepresentative {
+        if selectionSource == .manual {
             return "Chosen for this day"
         }
 
-        if isAutoPickDisabled {
-            return "No representative photo selected"
+        if selectionSource == .automatic {
+            return "Picked automatically"
         }
 
         return "Representative photo"
@@ -70,6 +63,25 @@ final class DayPhotosViewModel: ObservableObject {
         representativeAssetID != nil
     }
 
+    var canRandomPick: Bool {
+        assets.contains { $0.asset.mediaSubtypes.contains(.photoScreenshot) == false }
+    }
+
+    var selectionStatusText: String? {
+        switch selectionSource {
+        case .manual:
+            return "Picked manually"
+        case .automatic:
+            return "Auto-picked"
+        case .none:
+            return nil
+        }
+    }
+
+    var shouldShowAutoPickResolvedHint: Bool {
+        representativeAssetID == nil && isAutoPickResolved
+    }
+
     var previousPhotoDate: Date? {
         photoLibraryViewModel.previousPhotoDate(from: date)
     }
@@ -78,15 +90,11 @@ final class DayPhotosViewModel: ObservableObject {
         photoLibraryViewModel.nextPhotoDate(from: date)
     }
 
-    func timeText(for date: Date) -> String {
-        Self.timeFormatter.string(from: date)
-    }
-
     func reload() {
         assets = photoLibraryViewModel.assets(for: date)
         representativeAssetID = photoLibraryViewModel.representativeAsset(for: date)?.id
-        isManualRepresentative = photoLibraryViewModel.isManualRepresentative(for: date)
-        isAutoPickDisabled = photoLibraryViewModel.isAutoPickDisabled(for: date)
+        selectionSource = photoLibraryViewModel.selectionSource(for: date)
+        isAutoPickResolved = photoLibraryViewModel.isAutoPickResolved(for: date)
 
         guard assets.isEmpty == false else {
             displayedAssetID = nil
@@ -114,8 +122,7 @@ final class DayPhotosViewModel: ObservableObject {
         guard let selectedAsset else { return }
         photoLibraryViewModel.setManualRepresentativeAsset(selectedAsset, for: date)
         representativeAssetID = selectedAsset.id
-        isManualRepresentative = true
-        isAutoPickDisabled = false
+        selectionSource = .manual
     }
 
     func isRepresentative(_ asset: PhotoAssetItem) -> Bool {
@@ -126,16 +133,23 @@ final class DayPhotosViewModel: ObservableObject {
         photoLibraryViewModel.setManualRepresentativeAsset(asset, for: date)
         representativeAssetID = asset.id
         displayedAssetID = asset.id
-        isManualRepresentative = true
-        isAutoPickDisabled = false
+        selectionSource = .manual
     }
 
     func clearRepresentative() {
         guard representativeAssetID != nil else { return }
-        photoLibraryViewModel.disableAutoPick(for: date, excludingCurrentRepresentative: true)
+        photoLibraryViewModel.clearRepresentativeSelection(for: date)
         representativeAssetID = nil
-        isManualRepresentative = false
-        isAutoPickDisabled = true
+        selectionSource = nil
+        isAutoPickResolved = true
+    }
+
+    func randomPickRepresentative() {
+        guard let selected = photoLibraryViewModel.setRandomRepresentativeAsset(for: date) else { return }
+        representativeAssetID = selected.id
+        displayedAssetID = selected.id
+        selectionSource = .manual
+        isAutoPickResolved = true
     }
 
     func moveDay(by offset: Int) {
