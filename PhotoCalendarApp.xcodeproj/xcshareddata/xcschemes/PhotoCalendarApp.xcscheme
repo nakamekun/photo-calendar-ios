@@ -15,7 +15,7 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "E00000010000000000000001"
-               BuildableName = "PhotoCalendarApp.app"
+               BuildableName = "PhotoDay.app"
                BlueprintName = "PhotoCalendarApp"
                ReferencedContainer = "container:PhotoCalendarApp.xcodeproj">
             </BuildableReference>
@@ -45,7 +45,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E00000010000000000000001"
-            BuildableName = "PhotoCalendarApp.app"
+            BuildableName = "PhotoDay.app"
             BlueprintName = "PhotoCalendarApp"
             ReferencedContainer = "container:PhotoCalendarApp.xcodeproj">
          </BuildableReference>
@@ -62,7 +62,7 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "E00000010000000000000001"
-            BuildableName = "PhotoCalendarApp.app"
+            BuildableName = "PhotoDay.app"
             BlueprintName = "PhotoCalendarApp"
             ReferencedContainer = "container:PhotoCalendarApp.xcodeproj">
          </BuildableReference>

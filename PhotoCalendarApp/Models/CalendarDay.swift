@@ -5,6 +5,20 @@ enum CalendarThumbnailSource: Hashable {
     case mock(MockCalendarPhoto)
 }
 
+enum CalendarPickIndicator: Hashable {
+    case manual
+    case automatic
+
+    init(source: DaySelectionSource) {
+        switch source {
+        case .manual:
+            self = .manual
+        case .automatic:
+            self = .automatic
+        }
+    }
+}
+
 struct MockCalendarPhoto: Identifiable, Hashable {
     enum Kind: CaseIterable, Hashable {
         case child
@@ -35,7 +49,7 @@ struct CalendarPreviewItem: Identifiable, Hashable {
 struct MemoryTimelineEntry: Identifiable, Hashable {
     let date: Date
     let source: CalendarThumbnailSource
-    let isManualSelection: Bool
+    let pickIndicator: CalendarPickIndicator?
 
     var id: String {
         DayKeyFormatter.dayString(from: date)
@@ -51,6 +65,7 @@ struct CalendarDay: Identifiable, Hashable {
     let isInCurrentStreak: Bool
     let representativeAsset: PhotoAssetItem?
     let thumbnailSource: CalendarThumbnailSource?
+    let pickIndicator: CalendarPickIndicator?
 
     var id: String { DayKeyFormatter.dayString(from: date) }
     var dayNumberText: String { String(Calendar.current.component(.day, from: date)) }

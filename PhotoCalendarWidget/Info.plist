@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Photo Calendar</string>
+	<string>PhotoDay</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,6 +26,6 @@
 		<string>com.apple.widgetkit-extension</string>
 	</dict>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>This widget displays your picked Photo Calendar image for today.</string>
+	<string>This widget displays your picked PhotoDay memory.</string>
 </dict>
 </plist>

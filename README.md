@@ -1,6 +1,6 @@
-# PhotoCalendarApp
+# PhotoDay
 
-PhotoCalendarApp is an iOS 17+ photo calendar built with SwiftUI and the Photos framework. It groups your photos by capture date and lets you choose one photo to represent each day.
+PhotoDay is an iOS 17+ photo calendar built with SwiftUI and the Photos framework. It groups your photos by capture date and lets you choose one photo to represent each day.
 
 ## Features
 

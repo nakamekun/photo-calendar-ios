@@ -90,7 +90,7 @@ struct CalendarDayCellView: View {
     private let thumbnailCornerRadius: CGFloat = 16
     private let thumbnailSide: CGFloat = 38
     private let thumbnailHorizontalInset: CGFloat = 5
-    private let thumbnailBottomInset: CGFloat = 5
+    private let thumbnailBottomInset: CGFloat = 3
     private let dayBadgeSize: CGFloat = 30
 
     var body: some View {
@@ -123,11 +123,12 @@ struct CalendarDayCellView: View {
 
             VStack(spacing: 0) {
                 dayBadge
+                pickIndicator
                 Spacer(minLength: day.hasRepresentativePhoto ? 22 : 28)
                 statusFooter
             }
             .padding(.horizontal, 8)
-            .padding(.top, 8)
+            .padding(.top, 7)
             .padding(.bottom, day.hasRepresentativePhoto ? 8 : 10)
         }
         .frame(maxWidth: .infinity)
@@ -190,16 +191,25 @@ struct CalendarDayCellView: View {
     }
 
     @ViewBuilder
+    private var pickIndicator: some View {
+        if let indicatorStyle {
+            HStack(spacing: 0) {
+                Spacer(minLength: 0)
+                Image(systemName: indicatorStyle.symbolName)
+                    .font(.system(size: indicatorStyle.fontSize, weight: indicatorStyle.fontWeight))
+                    .foregroundStyle(indicatorStyle.foreground)
+                    .accessibilityLabel(indicatorStyle.accessibilityLabel)
+            }
+            .frame(height: 11)
+            .padding(.top, 1)
+            .padding(.trailing, 2)
+        }
+    }
+
+    @ViewBuilder
     private var statusFooter: some View {
         if day.hasRepresentativePhoto {
-            HStack(spacing: 4) {
-                Spacer(minLength: 0)
-                Image(systemName: "star.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.92))
-                    .padding(7)
-                    .background(Color.black.opacity(0.28), in: Circle())
-            }
+            EmptyView()
         } else if day.hasAnyPhotos {
             HStack(spacing: 4) {
                 Spacer(minLength: 0)
@@ -207,6 +217,18 @@ struct CalendarDayCellView: View {
                     .fill(Color.blue.opacity(0.72))
                     .frame(width: 6, height: 6)
             }
+        }
+    }
+
+    private var indicatorStyle: PickIndicatorStyle? {
+        guard day.hasRepresentativePhoto else { return nil }
+
+        // If a legacy/mock representative has no explicit source, keep the stronger manual marker.
+        switch day.pickIndicator ?? .manual {
+        case .manual:
+            return .manual
+        case .automatic:
+            return .automatic
         }
     }
 
@@ -283,4 +305,28 @@ struct CalendarDayCellView: View {
 
         return AnyShapeStyle(Color(.tertiarySystemBackground))
     }
+}
+
+private struct PickIndicatorStyle {
+    let symbolName: String
+    let foreground: Color
+    let fontSize: CGFloat
+    let fontWeight: Font.Weight
+    let accessibilityLabel: String
+
+    static let manual = PickIndicatorStyle(
+        symbolName: "star.fill",
+        foreground: Color.white.opacity(0.84),
+        fontSize: 9.8,
+        fontWeight: .semibold,
+        accessibilityLabel: "Picked manually"
+    )
+
+    static let automatic = PickIndicatorStyle(
+        symbolName: "sparkles",
+        foreground: Color.white.opacity(0.72),
+        fontSize: 9.2,
+        fontWeight: .medium,
+        accessibilityLabel: "Auto-picked"
+    )
 }

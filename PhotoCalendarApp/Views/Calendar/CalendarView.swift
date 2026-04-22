@@ -411,10 +411,16 @@ private struct MemoriesTimelineView: View {
                                                         }
                                                     )
 
-                                                    Text(memoryDateText(for: entry.date))
-                                                        .font(.footnote.weight(.medium))
-                                                        .foregroundStyle(Color.white.opacity(0.72))
-                                                        .padding(.horizontal, 4)
+                                                    HStack(spacing: 8) {
+                                                        Text(memoryDateText(for: entry.date))
+                                                            .font(.footnote.weight(.medium))
+                                                            .foregroundStyle(Color.white.opacity(0.72))
+
+                                                        Spacer(minLength: 8)
+
+                                                        pickSourceLabel(for: entry.pickIndicator)
+                                                    }
+                                                    .padding(.horizontal, 4)
                                                 }
                                             }
                                             .buttonStyle(.plain)
@@ -581,6 +587,31 @@ private struct MemoriesTimelineView: View {
 
         if let updatedDate = calendar.date(from: components) {
             selectedDate = updatedDate.startOfDay()
+        }
+    }
+
+    @ViewBuilder
+    private func pickSourceLabel(for indicator: CalendarPickIndicator?) -> some View {
+        if let indicator {
+            Text(pickSourceText(for: indicator))
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(Color.white.opacity(0.48))
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(Color.white.opacity(0.06), in: Capsule())
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.white.opacity(0.08), lineWidth: 1)
+                )
+        }
+    }
+
+    private func pickSourceText(for indicator: CalendarPickIndicator) -> String {
+        switch indicator {
+        case .manual:
+            return "Manual pick"
+        case .automatic:
+            return "Auto pick"
         }
     }
 

@@ -405,10 +405,13 @@ final class PhotoLibraryViewModel: ObservableObject {
 
             let key = DayKeyFormatter.dayString(from: date)
             let daySummary = photoDaySummariesByKey[key]
-            let representativeAsset = cachedSelectionsByDay[key]
+            let cachedSelection = cachedSelectionsByDay[key]
+            let representativeAsset = cachedSelection
                 .flatMap { assetLookup[$0.representativeIdentifier] }
             let mockEntry = mockEntries[key]
             let photoCount = max(daySummary?.photoCount ?? 0, mockEntry?.photoCount ?? 0)
+            let pickIndicator = cachedSelection
+                .flatMap { representativeAsset == nil ? nil : CalendarPickIndicator(source: $0.source) }
 
             return CalendarDay(
                 date: date,
@@ -421,7 +424,8 @@ final class PhotoLibraryViewModel: ObservableObject {
                 thumbnailSource: thumbnailSource(
                     representativeAsset: representativeAsset,
                     mockEntry: mockEntry
-                )
+                ),
+                pickIndicator: pickIndicator
             )
         }
 
@@ -1193,7 +1197,7 @@ final class PhotoLibraryViewModel: ObservableObject {
             return MemoryTimelineEntry(
                 date: date,
                 source: .asset(asset),
-                isManualSelection: cachedSelectionsByDay[key]?.source == .manual
+                pickIndicator: cachedSelectionsByDay[key].map { CalendarPickIndicator(source: $0.source) }
             )
         }
         .sorted { $0.date > $1.date }
@@ -1206,7 +1210,7 @@ final class PhotoLibraryViewModel: ObservableObject {
             .values
             .filter { $0.hasRepresentativePhoto }
             .sorted { $0.date > $1.date }
-            .map { MemoryTimelineEntry(date: $0.date, source: .mock($0.photo), isManualSelection: false) }
+            .map { MemoryTimelineEntry(date: $0.date, source: .mock($0.photo), pickIndicator: nil) }
     }
 
     private func availablePhotoDates() -> [Date] {
