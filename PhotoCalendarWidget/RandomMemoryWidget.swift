@@ -330,8 +330,8 @@ struct RandomMemoryWidget: Widget {
         StaticConfiguration(kind: kind, provider: RandomMemoryProvider()) { entry in
             RandomMemoryWidgetView(entry: entry)
         }
-        .configurationDisplayName("Random Memory")
-        .description("Shows a picked memory from your photo calendar.")
+        .configurationDisplayName("PhotoDay")
+        .description("Shows a picked PhotoDay memory.")
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
         .contentMarginsDisabled()
     }

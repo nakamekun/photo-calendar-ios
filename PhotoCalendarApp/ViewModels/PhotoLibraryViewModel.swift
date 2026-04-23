@@ -32,6 +32,7 @@ final class PhotoLibraryViewModel: ObservableObject {
     private var monthsNeedingAutoPickAfterLoad: Set<String> = []
     private var backgroundMonthBackfillTask: Task<Void, Never>?
     private var initialBootstrapTask: Task<Void, Never>?
+    private var memoriesDataLoadTask: Task<Void, Never>?
 
     private struct DayPhotoState {
         let date: Date
@@ -533,12 +534,76 @@ final class PhotoLibraryViewModel: ObservableObject {
     }
 
     func prepareMemoryTimelineData(initialDate: Date = .now) {
-        let targetMonth = initialDate.startOfMonth(using: calendar)
+        ensureMemoriesDataLoaded()
+    }
 
-        Task {
-            await self.loadMonthIfNeeded(targetMonth, priority: .userInitiated, showLoading: true)
-            self.prefetchMonths(around: targetMonth)
-            self.startBackgroundMonthBackfillIfNeeded()
+    func ensureMemoriesDataLoaded() {
+        guard isPreviewMode == false else { return }
+        refreshAuthorizationStatus()
+        guard authorizationState.canReadLibrary else { return }
+        guard memoriesDataLoadTask == nil else {
+            logger.debug("Memories data load skipped because an existing task is running.")
+            return
+        }
+
+        memoriesDataLoadTask = Task { [photoLibraryService, calendar] in
+            let startedAt = Date()
+            let currentMonth = Date().startOfMonth(using: calendar)
+            let currentMonthKey = DayKeyFormatter.dayString(from: currentMonth)
+            let startingMemoryCount = memoryTimelinePreviewItems.count
+
+            logger.notice("Memories data load started current_month=\(currentMonthKey, privacy: .public) existing_memories=\(startingMemoryCount, privacy: .public)")
+
+            await self.warmCachedSelections()
+            refreshTimelineDerivedCaches(refreshPreviewStrip: true)
+            lastUpdated = Date()
+
+            await self.loadMonthIfNeeded(
+                currentMonth,
+                priority: .userInitiated,
+                showLoading: startingMemoryCount == 0,
+                autoPickVisibleMonth: true
+            )
+
+            let oldestAssetDate = await Task.detached(priority: .utility) {
+                photoLibraryService.fetchOldestImageAsset()?.creationDate
+            }.value
+
+            guard let oldestAssetDate else {
+                logger.notice("Memories data load finished without oldest asset. memories=\(self.memoryTimelinePreviewItems.count, privacy: .public)")
+                isLoading = false
+                memoriesDataLoadTask = nil
+                return
+            }
+
+            let oldestMonth = oldestAssetDate.startOfMonth(using: calendar)
+            let oldestMonthKey = DayKeyFormatter.dayString(from: oldestMonth)
+            logger.notice("Memories data load target oldest_month=\(oldestMonthKey, privacy: .public)")
+
+            var loadedCount = 0
+            var monthCursor = currentMonth
+
+            while monthCursor > oldestMonth {
+                if Task.isCancelled { break }
+                guard let previousMonth = calendar.date(byAdding: .month, value: -1, to: monthCursor) else { break }
+                monthCursor = previousMonth
+
+                await self.loadMonthIfNeeded(
+                    monthCursor,
+                    priority: .utility,
+                    autoPickVisibleMonth: true
+                )
+                loadedCount += 1
+
+                try? await Task.sleep(nanoseconds: 80_000_000)
+            }
+
+            refreshTimelineDerivedCaches(refreshPreviewStrip: true)
+            lastUpdated = Date()
+            isLoading = false
+            memoriesDataLoadTask = nil
+
+            logger.notice("Memories data load finished loaded_past_months=\(loadedCount, privacy: .public) memories=\(self.memoryTimelinePreviewItems.count, privacy: .public) elapsed_ms=\(Date().timeIntervalSince(startedAt) * 1000, privacy: .public)")
         }
     }
 

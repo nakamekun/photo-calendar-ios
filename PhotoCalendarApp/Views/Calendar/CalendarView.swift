@@ -124,8 +124,13 @@ struct CalendarView: View {
         .id(navigationStackID)
         .preferredColorScheme(.dark)
         .onChange(of: scenePhase) { _, newPhase in
-            guard newPhase == .active, let pendingDeepLinkDate else { return }
-            applyDeepLink(to: pendingDeepLinkDate, receivedWhileInactive: true)
+            guard newPhase == .active else { return }
+            if let pendingDeepLinkDate {
+                applyDeepLink(to: pendingDeepLinkDate, receivedWhileInactive: true)
+            }
+            if displayMode == .memories {
+                photoLibraryViewModel.ensureMemoriesDataLoaded()
+            }
         }
     }
 
@@ -483,7 +488,7 @@ private struct MemoriesTimelineView: View {
             guard shouldRenderEntries == false else { return }
             try? await Task.sleep(nanoseconds: 250_000_000)
             shouldRenderEntries = true
-            photoLibraryViewModel.prepareMemoryTimelineData(initialDate: selectedDate)
+            photoLibraryViewModel.ensureMemoriesDataLoaded()
         }
         .onChange(of: selectedDate) { _, newValue in
             guard shouldRenderEntries, photoLibraryViewModel.isPreviewMode == false else { return }
